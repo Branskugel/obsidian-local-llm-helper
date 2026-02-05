@@ -301,28 +301,6 @@ export default class OLocalLLMPlugin extends Plugin {
 		});
 
 
-		// Register the original custom prompt command to use the first custom prompt
-		this.addCommand({
-			id: "custom-selected-text",
-			name: "Run Custom prompt (from settings) on selected text",
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				this.isKillSwitchActive = false; // Reset kill switch state
-				let selectedText = this.getSelectedText();
-				if (selectedText.length > 0) {
-					// Use the first custom prompt from the list
-					let promptToUse = this.settings.customPrompt; // fallback to legacy
-					if (this.settings.customPrompts && this.settings.customPrompts.length > 0) {
-						promptToUse = this.settings.customPrompts[0].prompt;
-					}
-					new Notice("Custom prompt: " + promptToUse);
-					processText(
-						selectedText,
-						promptToUse,
-						this
-					);
-				}
-			},
-		});
 
 		// Register commands for each custom prompt (always enabled now)
 		if (this.settings.customPrompts) {
