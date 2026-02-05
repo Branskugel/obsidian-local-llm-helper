@@ -37,6 +37,9 @@ const context = await esbuild.context({
 	logLevel: "info",
 	sourcemap: prod ? false : "inline",
 	treeShaking: true,
+	minifyIdentifiers: false,  // Prevent renaming of identifiers that might break constructors
+	minifySyntax: true,        // Keep syntax minification for smaller bundle
+	minifyWhitespace: prod,    // Only minify whitespace in production
 	outfile: "main.js",
 });
 

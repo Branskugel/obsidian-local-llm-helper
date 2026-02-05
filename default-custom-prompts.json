@@ -1,0 +1,30 @@
+[
+  {
+    "id": "default-prompt",
+    "title": "Create Todo List",
+    "prompt": "create a todo list from the following text:",
+    "createdAt": 0,
+    "updatedAt": 0
+  },
+  {
+    "id": "action-items-prompt",
+    "title": "Generate Action Items",
+    "prompt": "Generate action items based on the following text (use bullets or numbers based on context):",
+    "createdAt": 0,
+    "updatedAt": 0
+  },
+  {
+    "id": "professional-tone-prompt",
+    "title": "Make Professional",
+    "prompt": "Make the following sound professional (maintain verbs and pronoun forms, also retain the markdowns):",
+    "createdAt": 0,
+    "updatedAt": 0
+  },
+  {
+    "id": "summarize-prompt",
+    "title": "Summarize",
+    "prompt": "Summarize the following text (maintain verbs and pronoun forms, also retain the markdowns):",
+    "createdAt": 0,
+    "updatedAt": 0
+  }
+]

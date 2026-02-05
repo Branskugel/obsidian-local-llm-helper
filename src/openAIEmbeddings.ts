@@ -1,78 +1,57 @@
-import { OpenAIEmbeddings as LangChainOpenAIEmbeddings } from "@langchain/openai";
+import { OpenAIEmbeddings as OEmbed } from "@langchain/openai";
 
-/**
- * OpenAI-compatible embeddings client.
- * Works with any server that implements the OpenAI /v1/embeddings endpoint:
- * - Ollama (http://localhost:11434)
- * - LM Studio (http://localhost:1234)
- * - vLLM
- * - OpenAI
- * - Any other OpenAI-compatible server
- */
-export class OpenAIEmbeddings extends LangChainOpenAIEmbeddings {
-	constructor(apiKey: string = "not-needed", modelName: string, baseURL: string) {
-		// Ensure baseURL ends with /v1 for OpenAI-compatible endpoint
-		const normalizedURL = baseURL.endsWith('/v1') ? baseURL : `${baseURL}/v1`;
-
+export class OpenAIEmbeddings extends OEmbed {
+	constructor(openAIApiKey: string = "lm-studio", modelName: string, baseURL: string = "http://127.0.0.1:1234") {
+		// Ensure LM Studio uses the correct default port if not specified
+		const studioUrl = baseURL.includes(':') ? baseURL : 
+			baseURL.replace('localhost', 'localhost:1234').replace('127.0.0.1', '127.0.0.1:1234');
+		
 		super({
-			openAIApiKey: apiKey,
+			openAIApiKey,
 			modelName,
-			configuration: { baseURL: normalizedURL }
+			configuration: { baseURL: `${studioUrl}/v1` }
 		});
-
-		console.log(`OpenAI-compatible Embeddings initialized - URL: ${normalizedURL}, Model: ${modelName}`);
+		
+		console.log(`OpenAI/LM Studio Embeddings initialized with URL: ${studioUrl}/v1, Model: ${modelName}`);
 	}
 
 	async embedDocuments(documents: string[]): Promise<number[][]> {
-		console.log(`Embedding ${documents.length} documents...`);
+		console.log(`Embedding ${documents.length} documents with OpenAI/LM Studio`);
 		try {
 			const embeddings = await super.embedDocuments(documents);
 			console.log(`Successfully embedded ${documents.length} documents`);
 			return embeddings;
 		} catch (error) {
-			console.error('Embeddings error:', error);
-			throw this.createHelpfulError(error);
+			console.error('Error in OpenAI/LM Studio embedDocuments:', error);
+			
+			// Provide helpful error messages
+			if (error.message?.includes('404')) {
+				throw new Error(`LM Studio server not found or model not loaded. Please ensure LM Studio is running and an embedding model is loaded.`);
+			} else if (error.message?.includes('ECONNREFUSED')) {
+				throw new Error(`Cannot connect to LM Studio server. Please ensure LM Studio is running on the configured address.`);
+			}
+			
+			throw error;
 		}
 	}
 
 	async embedQuery(text: string): Promise<number[]> {
-		console.log(`Embedding query...`);
+		console.log(`Embedding query with OpenAI/LM Studio`);
 		try {
 			const embedding = await super.embedQuery(text);
 			console.log(`Successfully embedded query`);
 			return embedding;
 		} catch (error) {
-			console.error('Embeddings error:', error);
-			throw this.createHelpfulError(error);
+			console.error('Error in OpenAI/LM Studio embedQuery:', error);
+			
+			// Provide helpful error messages
+			if (error.message?.includes('404')) {
+				throw new Error(`LM Studio server not found or model not loaded. Please ensure LM Studio is running and an embedding model is loaded.`);
+			} else if (error.message?.includes('ECONNREFUSED')) {
+				throw new Error(`Cannot connect to LM Studio server. Please ensure LM Studio is running on the configured address.`);
+			}
+			
+			throw error;
 		}
-	}
-
-	private createHelpfulError(error: any): Error {
-		const msg = error.message || String(error);
-
-		if (msg.includes('ECONNREFUSED') || msg.includes('Failed to fetch')) {
-			return new Error(
-				`Cannot connect to server. Please ensure your LLM server is running.`
-			);
-		}
-
-		if (msg.includes('404') || msg.includes('not found')) {
-			return new Error(
-				`Embeddings endpoint not found. Please ensure:\n` +
-				`• Your server supports /v1/embeddings\n` +
-				`• An embedding model is loaded (e.g., nomic-embed-text, mxbai-embed-large)`
-			);
-		}
-
-		if (msg.includes('400') || msg.includes('Bad Request') || msg.includes('model')) {
-			return new Error(
-				`Embeddings request failed. Please ensure:\n` +
-				`• An embedding model is loaded (not a chat model)\n` +
-				`• For Ollama: ollama pull nomic-embed-text\n` +
-				`• The model name in settings matches the loaded model`
-			);
-		}
-
-		return error;
 	}
 }
