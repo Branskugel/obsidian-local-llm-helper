@@ -2198,130 +2198,6 @@ class OLLMSettingTab extends PluginSettingTab {
 		});
 
 		// ═══════════════════════════════════════════════════════════
-		// INTEGRATIONS
-		// ═══════════════════════════════════════════════════════════
-		containerEl.createEl("h3", { text: "Integrations" });
-
-		// Search Engine Settings - keeping comprehensive search engine support from your version
-		const searchEngineSetting = new Setting(containerEl)
-			.setName("Search Engine")
-			.setDesc("Choose which search engine to use for web searches");
-
-		// Create dropdown for search engines
-		const searchEngineDropdown = searchEngineSetting.addDropdown(dropdown => {
-			for (const key in searchEnginesDict) {
-				if (searchEnginesDict.hasOwnProperty(key)) {
-					dropdown.addOption(key, searchEnginesDict[key]);
-				}
-			}
-			dropdown.setValue(this.plugin.settings.searchEngine)
-				.onChange(async (value) => {
-					this.plugin.settings.searchEngine = value;
-					await this.plugin.saveSettings();
-					this.display(); // Refresh the settings UI to show/hide relevant fields
-				});
-		});
-
-		// Conditionally show API key field based on search engine selection
-		if (this.plugin.settings.searchEngine !== 'duckduckgo' && this.plugin.settings.searchEngine !== 'custom') {
-			new Setting(containerEl)
-				.setName("Search Engine API Key")
-				.setDesc(`API key for ${searchEnginesDict[this.plugin.settings.searchEngine]} (if required)`)
-				.addText((text) =>
-					text
-						.setPlaceholder(`Enter your ${searchEnginesDict[this.plugin.settings.searchEngine]} API key`)
-						.setValue(this.plugin.settings.searchEngine === 'brave' ? this.plugin.settings.braveSearchApiKey : this.plugin.settings.customSearchApiKey || '')
-						.onChange(async (value) => {
-							if (this.plugin.settings.searchEngine === 'brave') {
-								this.plugin.settings.braveSearchApiKey = value;
-							} else {
-								this.plugin.settings.customSearchApiKey = value;
-							}
-							await this.plugin.saveSettings();
-						})
-				);
-		}
-
-		// Show custom search URL field if custom search engine is selected
-		if (this.plugin.settings.searchEngine === 'custom') {
-			new Setting(containerEl)
-				.setName("Custom Search URL")
-				.setDesc("URL for your custom search engine API")
-				.addText((text) =>
-					text
-						.setPlaceholder("https://your-custom-search-engine.com/api/search")
-						.setValue(this.plugin.settings.customSearchUrl || '')
-						.onChange(async (value) => {
-							this.plugin.settings.customSearchUrl = value;
-							await this.plugin.saveSettings();
-						})
-				);
-		}
-
-		// Show SearXNG URL field if SearXNG is selected
-		if (this.plugin.settings.searchEngine === 'searxng') {
-			new Setting(containerEl)
-				.setName("SearXNG Instance URL")
-				.setDesc("URL for your SearXNG instance")
-				.addText((text) =>
-					text
-						.setPlaceholder("https://your-searxng-instance.com")
-						.setValue(this.plugin.settings.searxngUrl || 'https://searx.work')
-						.onChange(async (value) => {
-							this.plugin.settings.searxngUrl = value;
-							await this.plugin.saveSettings();
-						})
-				);
-		}
-
-		// Show Perplexica URL field if Perplexica is selected
-		if (this.plugin.settings.searchEngine === 'perplexica') {
-			new Setting(containerEl)
-				.setName("Perplexica API URL")
-				.setDesc("URL for the Perplexica API")
-				.addText((text) =>
-					text
-						.setPlaceholder("https://api.perplexica.com")
-						.setValue(this.plugin.settings.perplexicaUrl || 'https://api.perplexica.com')
-						.onChange(async (value) => {
-							this.plugin.settings.perplexicaUrl = value;
-							await this.plugin.saveSettings();
-						})
-				);
-		}
-
-		// Show Firecrawl URL field if Firecrawl is selected
-		if (this.plugin.settings.searchEngine === 'firecrawl') {
-			new Setting(containerEl)
-				.setName("Firecrawl API URL")
-				.setDesc("URL for the Firecrawl API")
-				.addText((text) =>
-					text
-						.setPlaceholder("https://api.firecrawl.dev")
-						.setValue(this.plugin.settings.firecrawlUrl || 'https://api.firecrawl.dev')
-						.onChange(async (value) => {
-							this.plugin.settings.firecrawlUrl = value;
-							await this.plugin.saveSettings();
-						})
-				);
-		}
-
-		// Add search provider dropdown for backward compatibility
-		new Setting(containerEl)
-			.setName("Search provider")
-			.setDesc("Choose which search API to use for web and news search")
-			.addDropdown((dropdown) =>
-				dropdown
-					.addOption("tavily", "Tavily")
-					.addOption("brave", "Brave")
-					.setValue(this.plugin.settings.searchProvider)
-					.onChange((value) => {
-						this.plugin.settings.searchProvider = value;
-						this.plugin.saveSettings();
-					})
-			);
-
-		// ═══════════════════════════════════════════════════════════
 		// ABOUT
 		// ═══════════════════════════════════════════════════════════
 		containerEl.createEl("h3", { text: "About" });
@@ -3055,7 +2931,6 @@ class SelectPromptModal extends Modal {
 
 //TODO: kill switch
 
-<<<<<<< HEAD
 // Helper function to get the API key based on the selected search engine
 function getSearchApiKey(plugin: OLocalLLMPlugin): string {
 	switch (plugin.settings.searchEngine) {
