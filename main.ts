@@ -51,6 +51,8 @@ export interface OLocalLLMSettings {
 	searxngUrl?: string; // SearXNG instance URL
 	perplexicaUrl?: string; // Perplexica API URL
 	firecrawlUrl?: string; // Firecrawl API URL
+	searchProvider: string;
+	tavilyApiKey: string;
 }
 
 interface ConversationEntry {
@@ -104,6 +106,8 @@ const DEFAULT_SETTINGS: OLocalLLMSettings = {
 	searxngUrl: "https://searx.work", // Default SearXNG instance
 	perplexicaUrl: "https://api.perplexica.com", // Default Perplexica API URL
 	firecrawlUrl: "https://api.firecrawl.dev", // Default Firecrawl API URL
+	searchProvider: "tavily",
+	tavilyApiKey: ""
 };
 
 interface Persona {
@@ -1039,6 +1043,27 @@ class OLLMSettingTab extends PluginSettingTab {
 	constructor(app: App, plugin: OLocalLLMPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
+	}
+
+	// Debounced save to prevent lag when typing
+	private saveTimeout: any;
+	
+	private debouncedSave() {
+		if (this.saveTimeout) {
+			clearTimeout(this.saveTimeout);
+		}
+		this.saveTimeout = setTimeout(() => {
+			this.plugin.saveSettings();
+		}, 500);
+	}
+
+	// Flush any pending debounced save when settings tab is closed
+	hide() {
+		if (this.saveTimeout) {
+			clearTimeout(this.saveTimeout);
+			this.saveTimeout = null;
+			this.plugin.saveSettings();
+		}
 	}
 
 	display(): void {
@@ -2171,6 +2196,144 @@ class OLLMSettingTab extends PluginSettingTab {
 			text: "Note: Embeddings are now stored persistently and will be automatically loaded when Obsidian restarts. Embeddings will be rebuilt if you change the provider, model, or server settings.",
 			cls: "setting-item-description"
 		});
+
+		// ═══════════════════════════════════════════════════════════
+		// INTEGRATIONS
+		// ═══════════════════════════════════════════════════════════
+		containerEl.createEl("h3", { text: "Integrations" });
+
+		// Search Engine Settings - keeping comprehensive search engine support from your version
+		const searchEngineSetting = new Setting(containerEl)
+			.setName("Search Engine")
+			.setDesc("Choose which search engine to use for web searches");
+
+		// Create dropdown for search engines
+		const searchEngineDropdown = searchEngineSetting.addDropdown(dropdown => {
+			for (const key in searchEnginesDict) {
+				if (searchEnginesDict.hasOwnProperty(key)) {
+					dropdown.addOption(key, searchEnginesDict[key]);
+				}
+			}
+			dropdown.setValue(this.plugin.settings.searchEngine)
+				.onChange(async (value) => {
+					this.plugin.settings.searchEngine = value;
+					await this.plugin.saveSettings();
+					this.display(); // Refresh the settings UI to show/hide relevant fields
+				});
+		});
+
+		// Conditionally show API key field based on search engine selection
+		if (this.plugin.settings.searchEngine !== 'duckduckgo' && this.plugin.settings.searchEngine !== 'custom') {
+			new Setting(containerEl)
+				.setName("Search Engine API Key")
+				.setDesc(`API key for ${searchEnginesDict[this.plugin.settings.searchEngine]} (if required)`)
+				.addText((text) =>
+					text
+						.setPlaceholder(`Enter your ${searchEnginesDict[this.plugin.settings.searchEngine]} API key`)
+						.setValue(this.plugin.settings.searchEngine === 'brave' ? this.plugin.settings.braveSearchApiKey : this.plugin.settings.customSearchApiKey || '')
+						.onChange(async (value) => {
+							if (this.plugin.settings.searchEngine === 'brave') {
+								this.plugin.settings.braveSearchApiKey = value;
+							} else {
+								this.plugin.settings.customSearchApiKey = value;
+							}
+							await this.plugin.saveSettings();
+						})
+				);
+		}
+
+		// Show custom search URL field if custom search engine is selected
+		if (this.plugin.settings.searchEngine === 'custom') {
+			new Setting(containerEl)
+				.setName("Custom Search URL")
+				.setDesc("URL for your custom search engine API")
+				.addText((text) =>
+					text
+						.setPlaceholder("https://your-custom-search-engine.com/api/search")
+						.setValue(this.plugin.settings.customSearchUrl || '')
+						.onChange(async (value) => {
+							this.plugin.settings.customSearchUrl = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
+
+		// Show SearXNG URL field if SearXNG is selected
+		if (this.plugin.settings.searchEngine === 'searxng') {
+			new Setting(containerEl)
+				.setName("SearXNG Instance URL")
+				.setDesc("URL for your SearXNG instance")
+				.addText((text) =>
+					text
+						.setPlaceholder("https://your-searxng-instance.com")
+						.setValue(this.plugin.settings.searxngUrl || 'https://searx.work')
+						.onChange(async (value) => {
+							this.plugin.settings.searxngUrl = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
+
+		// Show Perplexica URL field if Perplexica is selected
+		if (this.plugin.settings.searchEngine === 'perplexica') {
+			new Setting(containerEl)
+				.setName("Perplexica API URL")
+				.setDesc("URL for the Perplexica API")
+				.addText((text) =>
+					text
+						.setPlaceholder("https://api.perplexica.com")
+						.setValue(this.plugin.settings.perplexicaUrl || 'https://api.perplexica.com')
+						.onChange(async (value) => {
+							this.plugin.settings.perplexicaUrl = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
+
+		// Show Firecrawl URL field if Firecrawl is selected
+		if (this.plugin.settings.searchEngine === 'firecrawl') {
+			new Setting(containerEl)
+				.setName("Firecrawl API URL")
+				.setDesc("URL for the Firecrawl API")
+				.addText((text) =>
+					text
+						.setPlaceholder("https://api.firecrawl.dev")
+						.setValue(this.plugin.settings.firecrawlUrl || 'https://api.firecrawl.dev')
+						.onChange(async (value) => {
+							this.plugin.settings.firecrawlUrl = value;
+							await this.plugin.saveSettings();
+						})
+				);
+		}
+
+		// Add search provider dropdown for backward compatibility
+		new Setting(containerEl)
+			.setName("Search provider")
+			.setDesc("Choose which search API to use for web and news search")
+			.addDropdown((dropdown) =>
+				dropdown
+					.addOption("tavily", "Tavily")
+					.addOption("brave", "Brave")
+					.setValue(this.plugin.settings.searchProvider)
+					.onChange((value) => {
+						this.plugin.settings.searchProvider = value;
+						this.plugin.saveSettings();
+					})
+			);
+
+		// ═══════════════════════════════════════════════════════════
+		// ABOUT
+		// ═══════════════════════════════════════════════════════════
+		containerEl.createEl("h3", { text: "About" });
+
+		new Setting(containerEl)
+			.setName("Version")
+			.setDesc(`Local LLM Helper v${this.plugin.manifest.version}`)
+			.addButton(btn => btn
+				.setButtonText("View changelog")
+				.onClick(() => {
+					new UpdateNoticeModal(this.app, this.plugin.manifest.version).open();
+				}));
 	}
 
 	updateIndexedFilesCount() {
@@ -2892,6 +3055,7 @@ class SelectPromptModal extends Modal {
 
 //TODO: kill switch
 
+<<<<<<< HEAD
 // Helper function to get the API key based on the selected search engine
 function getSearchApiKey(plugin: OLocalLLMPlugin): string {
 	switch (plugin.settings.searchEngine) {
@@ -3066,40 +3230,124 @@ function formatSearchResults(results: any, searchEngine: string, searchType: 'we
 	return "No results found or unsupported format.";
 }
 
+// Tavily search function from upstream
+async function tavilySearch(query: string, topic: string, plugin: OLocalLLMPlugin): Promise<string> {
+	const body: any = {
+		query,
+		topic,
+		max_results: 5,
+		search_depth: "basic",
+		include_answer: false,
+	};
+	if (topic === "news") {
+		body.time_range = "day";
+	}
+
+	const response = await requestUrl({
+		url: "https://api.tavily.com/search",
+		method: "POST",
+		headers: {
+			"Authorization": `Bearer ${plugin.settings.tavilyApiKey}`,
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify(body),
+	});
+
+	if (response.status !== 200) {
+		throw new Error("Tavily search failed: " + response.status);
+	}
+
+	const results = response.json.results;
+	return results.map((result: any) =>
+		`${result.title}\n${result.content}\nSource: ${result.url}\n\n`
+	).join('');
+}
+
 async function processWebSearch(query: string, plugin: OLocalLLMPlugin) {
-	// Check if API key is required and available
+	// First check if the user has configured the search engine in the new settings
+	const provider = plugin.settings.searchProvider;
+
+	// Check if API key is required and available for the legacy search engines
 	const requiresApiKey = plugin.settings.searchEngine !== 'duckduckgo' && plugin.settings.searchEngine !== 'custom';
 	const apiKey = getSearchApiKey(plugin);
 
-	if (requiresApiKey && !apiKey) {
+	if (requiresApiKey && !apiKey && provider !== "tavily") {
 		new Notice(`Please set your ${searchEnginesDict[plugin.settings.searchEngine] || 'search engine'} API key in settings`);
+		return;
+	}
+
+	if (provider === "tavily" && !plugin.settings.tavilyApiKey) {
+		new Notice("Please set your Tavily API key in settings");
+		return;
+	}
+	if (provider === "brave" && !plugin.settings.braveSearchApiKey && !apiKey) {
+		new Notice("Please set your Brave Search API key in settings");
 		return;
 	}
 
 	new Notice(`Searching the web using ${searchEnginesDict[plugin.settings.searchEngine] || 'selected search engine'}...`);
 
 	try {
-		const url = getSearchUrl(plugin, query, 'web');
-		const headers = getSearchHeaders(plugin);
+		// Use the new search provider if configured, otherwise use the legacy search engine
+		if (provider === "tavily") {
+			// Use Tavily search
+			const context = await tavilySearch(query, "general", plugin);
+			processText(
+				`Search results for "${query}":\n\n${context}`,
+				"Summarize these search results concisely. Use bullet points for key facts and cite sources inline as [Source](url).",
+				plugin
+			);
+		} else if (provider === "brave") {
+			// Use Brave search with new settings
+			const response = await requestUrl({
+				url: `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5&summary=1&extra_snippets=1&text_decorations=1&result_filter=web,discussions,faq,news&spellcheck=1`,
+				method: "GET",
+				headers: {
+					"Accept": "application/json",
+					"Accept-Encoding": "gzip",
+					"X-Subscription-Token": plugin.settings.braveSearchApiKey,
+				}
+			});
 
-		const response = await requestUrl({
-			url: url,
-			method: "GET",
-			headers: headers
-		});
+			if (response.status !== 200) {
+				throw new Error("Search failed: " + response.status);
+			}
 
-		if (response.status !== 200) {
-			throw new Error(`Search failed with status: ${response.status}`);
+			const searchResults = response.json.web.results;
+			const context = searchResults.map((result: any) => {
+				let snippets = result.extra_snippets ?
+					'\nAdditional Context:\n' + result.extra_snippets.join('\n') : '';
+				return `${result.title}\n${result.description}${snippets}\nSource: ${result.url}\n\n`;
+			}).join('');
+
+			processText(
+				`Search results for "${query}":\n\n${context}`,
+				"Summarize these search results concisely. Use bullet points for key facts and cite sources inline as [Source](url).",
+				plugin
+			);
+		} else {
+			// Use the legacy search engine system for backward compatibility
+			const url = getSearchUrl(plugin, query, 'web');
+			const headers = getSearchHeaders(plugin);
+
+			const response = await requestUrl({
+				url: url,
+				method: "GET",
+				headers: headers
+			});
+
+			if (response.status !== 200) {
+				throw new Error(`Search failed with status: ${response.status}`);
+			}
+
+			const formattedResults = formatSearchResults(response.json, plugin.settings.searchEngine, 'web');
+
+			processText(
+				`Based on these comprehensive search results about "${query}" from ${searchEnginesDict[plugin.settings.searchEngine]}:\n\n${formattedResults}`,
+				"You are a helpful assistant. Analyze these detailed search results and provide a thorough, well-structured response. Include relevant source citations and consider multiple perspectives if available.",
+				plugin
+			);
 		}
-
-		const formattedResults = formatSearchResults(response.json, plugin.settings.searchEngine, 'web');
-
-		processText(
-			`Based on these comprehensive search results about "${query}" from ${searchEnginesDict[plugin.settings.searchEngine]}:\n\n${formattedResults}`,
-			"You are a helpful assistant. Analyze these detailed search results and provide a thorough, well-structured response. Include relevant source citations and consider multiple perspectives if available.",
-			plugin
-		);
-
 	} catch (error) {
 		console.error("Web search error:", error);
 		new Notice("Web search failed. Check console for details.");
@@ -3107,38 +3355,88 @@ async function processWebSearch(query: string, plugin: OLocalLLMPlugin) {
 }
 
 async function processNewsSearch(query: string, plugin: OLocalLLMPlugin) {
-	// Check if API key is required and available
+	// First check if the user has configured the search engine in the new settings
+	const provider = plugin.settings.searchProvider;
+
+	// Check if API key is required and available for the legacy search engines
 	const requiresApiKey = plugin.settings.searchEngine !== 'duckduckgo' && plugin.settings.searchEngine !== 'custom';
 	const apiKey = getSearchApiKey(plugin);
 
-	if (requiresApiKey && !apiKey) {
+	if (requiresApiKey && !apiKey && provider !== "tavily") {
 		new Notice(`Please set your ${searchEnginesDict[plugin.settings.searchEngine] || 'search engine'} API key in settings`);
+		return;
+	}
+
+	if (provider === "tavily" && !plugin.settings.tavilyApiKey) {
+		new Notice("Please set your Tavily API key in settings");
+		return;
+	}
+	if (provider === "brave" && !plugin.settings.braveSearchApiKey && !apiKey) {
+		new Notice("Please set your Brave Search API key in settings");
 		return;
 	}
 
 	new Notice(`Searching news using ${searchEnginesDict[plugin.settings.searchEngine] || 'selected search engine'}...`);
 
 	try {
-		const url = getSearchUrl(plugin, query, 'news');
-		const headers = getSearchHeaders(plugin);
+		// Use the new search provider if configured, otherwise use the legacy search engine
+		if (provider === "tavily") {
+			// Use Tavily news search
+			const context = await tavilySearch(query, "news", plugin);
+			processText(
+				`News results for "${query}":\n\n${context}`,
+				"Summarize these news results concisely. List key developments as bullet points and cite sources inline as [Source](url).",
+				plugin
+			);
+		} else if (provider === "brave") {
+			// Use Brave news search with new settings
+			const response = await requestUrl({
+				url: `https://api.search.brave.com/res/v1/news/search?q=${encodeURIComponent(query)}&count=5&search_lang=en&freshness=pd`,
+				method: "GET",
+				headers: {
+					"Accept": "application/json",
+					"Accept-Encoding": "gzip",
+					"X-Subscription-Token": plugin.settings.braveSearchApiKey,
+				}
+			});
 
-		const response = await requestUrl({
-			url: url,
-			method: "GET",
-			headers: headers
-		});
+			if (response.status !== 200) {
+				throw new Error("News search failed: " + response.status);
+			}
 
-		if (response.status !== 200) {
-			throw new Error(`News search failed with status: ${response.status}`);
+			const newsResults = response.json.results;
+			const context = newsResults.map((result: any) =>
+				`${result.title}\n${result.description}\nSource: ${result.url}\nPublished: ${result.published_time}\n\n`
+			).join('');
+
+			processText(
+				`News results for "${query}":\n\n${context}`,
+				"Summarize these news results concisely. List key developments as bullet points and cite sources inline as [Source](url).",
+				plugin
+			);
+		} else {
+			// Use the legacy search engine system for backward compatibility
+			const url = getSearchUrl(plugin, query, 'news');
+			const headers = getSearchHeaders(plugin);
+
+			const response = await requestUrl({
+				url: url,
+				method: "GET",
+				headers: headers
+			});
+
+			if (response.status !== 200) {
+				throw new Error(`News search failed with status: ${response.status}`);
+			}
+
+			const formattedResults = formatSearchResults(response.json, plugin.settings.searchEngine, 'news');
+
+			processText(
+				`Based on these news results about "${query}" from ${searchEnginesDict[plugin.settings.searchEngine]}:\n\n${formattedResults}`,
+				"Analyze these news results and provide a comprehensive summary with key points and timeline. Include source citations.",
+				plugin
+			);
 		}
-
-		const formattedResults = formatSearchResults(response.json, plugin.settings.searchEngine, 'news');
-
-		processText(
-			`Based on these news results about "${query}" from ${searchEnginesDict[plugin.settings.searchEngine]}:\n\n${formattedResults}`,
-			"Analyze these news results and provide a comprehensive summary with key points and timeline. Include source citations.",
-			plugin
-		);
 	} catch (error) {
 		console.error("News search error:", error);
 		new Notice("News search failed. Check console for details.");

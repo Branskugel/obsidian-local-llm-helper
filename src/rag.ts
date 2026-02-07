@@ -73,15 +73,25 @@ export class RAGManager {
 	updateSettings(settings: OLocalLLMSettings): void {
 		this.settings = settings;
 		this.provider = settings.providerType || 'ollama';
-		
-		// Reinitialize embeddings with new settings
+
+		// Check if provider, model, or server changed to determine if re-indexing is needed
+		const modelChanged = this.settings.embeddingModelName !== settings.embeddingModelName;
+		const serverChanged = this.settings.serverAddress !== settings.serverAddress;
+		const providerChanged = this.settings.providerType !== settings.providerType;
+
+		// Reinitialize embeddings based on provider
 		this.embeddings = this.provider === 'ollama'
 			? new OllamaEmbeddings(settings.serverAddress, settings.embeddingModelName)
 			: new OpenAIEmbeddings(settings.openAIApiKey, settings.embeddingModelName, settings.serverAddress);
-		
-		// Update vector store with new embeddings
-		this.vectorStore = new MemoryVectorStore(this.embeddings);
-		
+
+		// Update the vector store's embeddings reference so new indexing uses the current model
+		(this.vectorStore as any).embeddings = this.embeddings;
+
+		// Only warn if embedding-related settings changed
+		if (modelChanged || serverChanged || providerChanged) {
+			console.log('⚠️ RAGManager: Embedding settings changed. Re-index recommended for best results.');
+		}
+
 		console.log(`RAGManager settings updated - Provider: ${this.provider}, Model: ${settings.embeddingModelName}`);
 	}
 
