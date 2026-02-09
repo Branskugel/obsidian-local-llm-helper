@@ -3317,3 +3317,4 @@ async function processNewsSearch(query: string, plugin: OLocalLLMPlugin) {
 		new Notice("News search failed. Check console for details.");
 	}
 }
+// End of processNewsSearch function and OLocalLLMPlugin class
