@@ -1,3 +1,62 @@
+// <IMPORTS_START>
+/**
+ * Local LLM Helper Plugin for Obsidian
+ * 
+ * This plugin enables users to work with local LLMs to assist with text editing,
+ * note processing, and content generation within Obsidian.
+ * 
+ * ========================================
+ * AI-FRIENDLY TAGGING SYSTEM EXPLANATION
+ * ========================================
+ * 
+ * This file uses AI-friendly XML-like comment tags to help AI models and developers
+ * navigate and understand the code structure more efficiently. These tags follow
+ * the format:
+ * 
+ * - Opening tag: // <SECTION_NAME_START>
+ * - Closing tag: // <SECTION_NAME_END>
+ * 
+ * Purpose of these tags:
+ * 1. Navigation: Allow AI models to quickly locate specific sections of code
+ * 2. Context: Provide clear boundaries for different functional units
+ * 3. Maintainability: Make it easier to modify specific sections without affecting others
+ * 4. Understanding: Help AI models comprehend the code structure during analysis
+ * 
+ * Common tag categories:
+ * - Interface definitions: // <INTERFACE_DEFINITIONS_START/END>
+ * - Class definitions: // <CLASS_NAME_START/END>
+ * - Method groups: // <METHOD_CATEGORY_START/END>
+ * - Settings management: // <SETTINGS_SECTION_START/END>
+ * - UI components: // <UI_COMPONENT_START/END>
+ * 
+ * These tags are especially useful when working with large TypeScript files where
+ * AI models need to locate specific functionality quickly.
+ * 
+ * ========================================
+ * CONTRACT COMMENT EXPLANATION
+ * ========================================
+ * 
+ * Each function with an opening AI-friendly tag is preceded by a contract comment
+ * that describes the function's behavior in a standardized format:
+ * 
+ * /* Contract: [use-case] --> [actions] --> [expected results] * /
+ * 
+ * Where:
+ * - Use-case: What the function is intended for
+ * - Actions: What the function does internally
+ * - Expected results: What the function returns or accomplishes
+ * 
+ * This contract format helps AI models and developers quickly understand:
+ * 1. Purpose: What problem the function solves
+ * 2. Behavior: How the function operates
+ * 3. Outcome: What to expect when calling the function
+ * 
+ * Example:
+ * // Contract: Process user text with LLM --> Send text and prompt to language model --> Return generated response
+ * 
+ * ========================================
+ */
+
 import {
 	App,
 	Editor,
@@ -19,7 +78,10 @@ import { UpdateNoticeModal } from "./src/updateNoticeModal";
 import { RAGManager } from './src/rag';
 import { BacklinkGenerator } from './src/backlinkGenerator';
 import { RAGChatModal } from './src/ragChatModal';
+// <IMPORTS_END>
 
+// <SETTINGS_INTERFACE_START>
+/* Contract: Define plugin configuration structure --> Specify all configurable parameters and their types --> Enable type-safe access to plugin settings */
 // Remember to rename these classes and interfaces!
 
 export interface OLocalLLMSettings {
@@ -54,12 +116,18 @@ export interface OLocalLLMSettings {
 	searchProvider: string;
 	tavilyApiKey: string;
 }
+// <SETTINGS_INTERFACE_END>
 
+// <CONVERSATION_ENTRY_INTERFACE_START>
+/* Contract: Define structure for conversation history entries --> Specify prompt/response pair format --> Enable proper storage and retrieval of conversation history */
 interface ConversationEntry {
 	prompt: string;
 	response: string;
 }
+// <CONVERSATION_ENTRY_INTERFACE_END>
 
+// <CUSTOM_PROMPT_INTERFACE_START>
+/* Contract: Define structure for custom prompts --> Specify properties for user-defined prompts with metadata --> Enable creation and management of custom AI prompts */
 // Interface for individual custom prompt
 interface CustomPrompt {
   id: string;           // Unique identifier
@@ -69,7 +137,9 @@ interface CustomPrompt {
   createdAt: number;    // Timestamp for ordering
   updatedAt: number;    // Timestamp for updates
 }
+// <CUSTOM_PROMPT_INTERFACE_END>
 
+// <DEFAULT_SETTINGS_START>
 const DEFAULT_SETTINGS: OLocalLLMSettings = {
 	serverAddress: "http://localhost:11434",
 	llmModel: "llama3",
@@ -109,7 +179,9 @@ const DEFAULT_SETTINGS: OLocalLLMSettings = {
 	searchProvider: "tavily",
 	tavilyApiKey: ""
 };
+// <DEFAULT_SETTINGS_END>
 
+// <PERSONAS_DEFINITIONS_START>
 interface Persona {
 	displayName: string;
 	systemPrompt: string;
@@ -166,7 +238,9 @@ let personasDict: { [key: string]: Persona } = {
 		systemPrompt: "You are a courteous and helpful office assistant. Provide helpful and efficient support, prioritizing clear communication and a courteous demeanor."
 	}
 };
+// <PERSONAS_DEFINITIONS_END>
 
+// <SEARCH_ENGINES_DICT_START>
 const searchEnginesDict: { [key: string]: string } = {
 	"brave": "Brave Search",
 	"searxng": "SearXNG",
@@ -175,7 +249,10 @@ const searchEnginesDict: { [key: string]: string } = {
 	"perplexica": "Perplexica",
 	"custom": "Custom Search Engine"
 };
+// <SEARCH_ENGINES_DICT_END>
 
+// <MAIN_PLUGIN_CLASS_START>
+/* Contract: Main plugin functionality orchestrator --> Initialize all plugin components, manage settings, handle user commands --> Full-featured local LLM integration for Obsidian */
 export default class OLocalLLMPlugin extends Plugin {
 	settings: OLocalLLMSettings;
 	modal: any;
@@ -185,6 +262,8 @@ export default class OLocalLLMPlugin extends Plugin {
 	private backlinkGenerator: BacklinkGenerator;
 	private commandRegistry: Map<string, { id: string; unregister: () => void }>;
 
+	// <LOAD_DEFAULT_CUSTOM_PROMPTS_START>
+	/* Contract: Load default custom prompts from JSON file --> Read JSON file from plugin directory and parse prompts --> Return array of default custom prompts */
 	// Method to load default custom prompts from JSON file
 	async loadDefaultCustomPrompts(): Promise<CustomPrompt[]> {
 		try {
@@ -213,7 +292,10 @@ export default class OLocalLLMPlugin extends Plugin {
 			];
 		}
 	}
+	// <LOAD_DEFAULT_CUSTOM_PROMPTS_END>
 
+	// <LOAD_DEFAULT_PERSONAS_START>
+	/* Contract: Load default personas from JSON file --> Read personas JSON from plugin directory --> Return dictionary of default personas */
 	// Method to load default personas from JSON file
 	async loadDefaultPersonas(): Promise<{ [key: string]: Persona }> {
 		try {
@@ -232,7 +314,10 @@ export default class OLocalLLMPlugin extends Plugin {
 			};
 		}
 	}
+	// <LOAD_DEFAULT_PERSONAS_END>
 
+	// <CHECK_FOR_UPDATES_START>
+	/* Contract: Check for plugin updates --> Compare current version with last seen version --> Show update notice modal if new version detected */
 	async checkForUpdates() {
 		const currentVersion = this.manifest.version;
 		const lastVersion = this.settings.lastVersion || "0.0.0";
@@ -244,7 +329,10 @@ export default class OLocalLLMPlugin extends Plugin {
 			await this.saveSettings();
 		}
 	}
+	// <CHECK_FOR_UPDATES_END>
 
+	// <PLUGIN_ONLOAD_START>
+	/* Contract: Initialize plugin on load --> Load settings, initialize managers, register commands and UI elements --> Plugin fully operational with all features enabled */
 	async onload() {
 		console.log('🔌 LLM Helper: Plugin loading...');
 		await this.loadSettings();
@@ -265,10 +353,10 @@ export default class OLocalLLMPlugin extends Plugin {
 		console.log('🧠 LLM Helper: Initializing RAGManager...');
 		// Initialize RAGManager
 		this.ragManager = new RAGManager(this.app.vault, this.settings, this);
-		
+
 		// Initialize RAGManager and show user notification about loaded data
 		await this.ragManager.initialize();
-		
+
 		// Show user-friendly notification about loaded embeddings after a short delay
 		// This ensures all UI elements are ready
 		setTimeout(() => {
@@ -554,29 +642,34 @@ export default class OLocalLLMPlugin extends Plugin {
 
 		// Continue with plugin initialization
 	}
+	// <PLUGIN_ONLOAD_END>
 
+	// <REFRESH_CUSTOM_PROMPT_COMMANDS_START>
 	// Method to refresh commands when custom prompts are modified
 	refreshCustomPromptCommands() {
 		// With our dynamic command registration system, commands are registered immediately
 		// when prompts are added, edited, or deleted, so no reload is needed
 		new Notice("Custom prompts updated. Commands are registered dynamically without requiring a plugin reload.");
 	}
+	// <REFRESH_CUSTOM_PROMPT_COMMANDS_END>
 
 
+	// <VALIDATE_SERVER_CONFIGURATION_START>
+	/* Contract: Validate server configuration settings --> Check provider type and server address format --> Return boolean indicating if configuration is valid */
 	private validateServerConfiguration(): boolean {
 		const provider = this.settings.providerType;
 		const serverAddress = this.settings.serverAddress;
 		const embeddingModel = this.settings.embeddingModelName;
-		
+
 		console.log(`Validating configuration - Provider: ${provider}, Server: ${serverAddress}, Embedding Model: ${embeddingModel}`);
-		
+
 		if (provider === 'ollama') {
 			// Ollama typically runs on port 11434
 			if (!serverAddress.includes('11434') && !serverAddress.includes('ollama')) {
 				console.warn('Ollama provider detected but server address might be incorrect. Ollama typically runs on port 11434.');
 				return false;
 			}
-			
+
 			// Check for common embedding models
 			const commonOllamaModels = ['mxbai-embed-large', 'nomic-embed-text', 'all-minilm'];
 			if (!commonOllamaModels.some(model => embeddingModel.includes(model))) {
@@ -589,10 +682,13 @@ export default class OLocalLLMPlugin extends Plugin {
 				return false;
 			}
 		}
-		
+
 		return true;
 	}
+	// <VALIDATE_SERVER_CONFIGURATION_END>
 
+	// <GET_SELECTED_TEXT_START>
+	/* Contract: Get currently selected text in active view --> Access the active markdown view and retrieve selected text --> Return selected text string or empty string if none */
 	private getSelectedText() {
 		let view = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!view) {
@@ -616,9 +712,12 @@ export default class OLocalLLMPlugin extends Plugin {
 		}
 		return "";
 	}
+	// <GET_SELECTED_TEXT_END>
 
 	onunload() { }
 
+	// <REGISTER_PROMPT_COMMAND_START>
+	/* Contract: Register a command for a specific prompt dynamically --> Create and register an Obsidian command for the custom prompt --> Command becomes available in command palette */
 	// Method to register a command for a specific prompt dynamically
 	registerPromptCommand(prompt: CustomPrompt) {
 		const commandId = `custom-prompt-${prompt.id}`;
@@ -662,7 +761,9 @@ export default class OLocalLLMPlugin extends Plugin {
 
 		console.log(`Command registered for prompt: ${prompt.title}`);
 	}
+	// <REGISTER_PROMPT_COMMAND_END>
 
+	// <UNREGISTER_PROMPT_COMMAND_START>
 	// Method to unregister a command for a specific prompt
 	unregisterPromptCommand(promptId: string) {
 		const commandId = `custom-prompt-${promptId}`;
@@ -674,7 +775,9 @@ export default class OLocalLLMPlugin extends Plugin {
 			console.log(`Command unregistered for prompt ID: ${promptId}`);
 		}
 	}
+	// <UNREGISTER_PROMPT_COMMAND_END>
 
+	// <REGISTER_ALL_PROMPT_COMMANDS_START>
 	// Method to register all commands for current custom prompts
 	registerAllPromptCommands() {
 		if (this.settings.customPrompts) {
@@ -683,7 +786,10 @@ export default class OLocalLLMPlugin extends Plugin {
 			});
 		}
 	}
+	// <REGISTER_ALL_PROMPT_COMMANDS_END>
 
+	// <PROCESS_CUSTOM_PROMPT_TEXT_START>
+	/* Contract: Process custom prompt with proper system prompt handling --> Send selected text and custom prompt to LLM with appropriate system context --> Generate and insert AI response in editor */
 	// Method to process custom prompt text with proper system prompt handling
 	async processCustomPromptText(
 		selectedText: string,
@@ -881,7 +987,10 @@ export default class OLocalLLMPlugin extends Plugin {
 			console.error("Status bar item element not found");
 		}
 	}
+	// <PROCESS_CUSTOM_PROMPT_TEXT_END>
 
+	// <LOAD_SETTINGS_START>
+	/* Contract: Load plugin settings from storage --> Read saved settings data and initialize with defaults if needed --> Plugin settings properly configured for use */
 	async loadSettings() {
 		console.log('📂 LLM Helper: Loading plugin settings...');
 		const savedData = await this.loadData();
@@ -912,7 +1021,9 @@ export default class OLocalLLMPlugin extends Plugin {
 			customPromptsCount: this.settings.customPrompts?.length || 0
 		});
 	}
+	// <LOAD_SETTINGS_END>
 
+	// <MIGRATE_LEGACY_CUSTOM_PROMPT_START>
 	// Migration function to ensure default prompt exists
 	private migrateLegacyCustomPrompt() {
 		// If we already have customPrompts defined and they're not empty, no migration needed
@@ -933,17 +1044,23 @@ export default class OLocalLLMPlugin extends Plugin {
 			];
 		}
 	}
+	// <MIGRATE_LEGACY_CUSTOM_PROMPT_END>
 
+	// <SAVE_SETTINGS_START>
+	/* Contract: Save plugin settings to storage --> Persist current settings to data.json file --> Settings preserved across Obsidian restarts */
 	async saveSettings() {
 		await this.saveData(this.settings);
-		
+
 		// Update RAG manager with new settings
 		if (this.ragManager) {
 			this.ragManager.updateSettings(this.settings);
 		}
 	}
+	// <SAVE_SETTINGS_END>
 
 
+	// <INDEX_NOTES_START>
+	/* Contract: Index all notes in vault for RAG --> Process all markdown files and generate embeddings --> Notes become searchable via RAG functionality */
 	async indexNotes() {
 		new Notice('Indexing notes for RAG...');
 		try {
@@ -957,7 +1074,10 @@ export default class OLocalLLMPlugin extends Plugin {
 			new Notice('Failed to index notes. Check console for details.');
 		}
 	}
+	// <INDEX_NOTES_END>
 
+	// <HANDLE_GENERATE_BACKLINKS_START>
+	/* Contract: Generate backlinks for selected text --> Find related notes using RAG and create backlink references --> Insert backlinks to related notes in current note */
 	async handleGenerateBacklinks() {
 		const activeView = this.app.workspace.getActiveViewOfType(MarkdownView);
 		if (!activeView) {
@@ -983,17 +1103,20 @@ export default class OLocalLLMPlugin extends Plugin {
 			new Notice('No relevant backlinks found');
 		}
 	}
+	// <HANDLE_GENERATE_BACKLINKS_END>
 
+	// <HANDLE_DIAGNOSTICS_START>
+	/* Contract: Run RAG storage diagnostics --> Collect and display storage statistics and configuration info --> Show diagnostic information to user in console and notice */
 	async handleDiagnostics() {
 		console.log('🔍 === RAG STORAGE DIAGNOSTICS ===');
-		
+
 		// Plugin settings diagnostics
 		console.log('📋 Plugin Settings:');
 		console.log('  Provider:', this.settings.providerType);
 		console.log('  Server:', this.settings.serverAddress);
 		console.log('  Embedding Model:', this.settings.embeddingModelName);
 		console.log('  LLM Model:', this.settings.llmModel);
-		
+
 		// RAG storage diagnostics
 		try {
 			const stats = await this.ragManager.getStorageStats();
@@ -1003,24 +1126,27 @@ export default class OLocalLLMPlugin extends Plugin {
 			console.log('  Last Indexed:', stats.lastIndexed);
 			console.log('  Storage Used:', stats.storageUsed);
 			console.log('  Current Indexed Count:', this.ragManager.getIndexedFilesCount());
-			
+
 			// Show user-friendly notice
 			new Notice(`RAG Diagnostics: ${stats.totalEmbeddings} embeddings, ${stats.indexedFiles} files. Check console for details.`);
 		} catch (error) {
 			console.error('❌ Error getting storage stats:', error);
 			new Notice('Error getting storage stats. Check console for details.');
 		}
-		
+
 		// File system diagnostics
 		const totalMdFiles = this.app.vault.getMarkdownFiles().length;
 		console.log('📁 Vault Stats:');
 		console.log('  Total Markdown Files:', totalMdFiles);
 		console.log('  Plugin Settings Path:', `${this.manifest.dir}/data.json`);
 		console.log('  Embeddings Storage Path:', `${this.manifest.dir}/embeddings.json`);
-		
+
 		console.log('🔍 === END DIAGNOSTICS ===');
 	}
+	// <HANDLE_DIAGNOSTICS_END>
 
+	// <SHOW_STORAGE_NOTIFICATION_START>
+	/* Contract: Show storage statistics notification --> Retrieve and format RAG storage statistics --> Display user-friendly notification about indexed content */
 	async showStorageNotification() {
 		try {
 			const stats = await this.ragManager.getStorageStats();
@@ -1033,8 +1159,12 @@ export default class OLocalLLMPlugin extends Plugin {
 			console.error('Error showing storage notification:', error);
 		}
 	}
+	// <SHOW_STORAGE_NOTIFICATION_END>
 }
+// <MAIN_PLUGIN_CLASS_END>
 
+// <SETTINGS_TAB_CLASS_START>
+/* Contract: Manage plugin settings UI --> Render settings interface with all configurable options --> Allow user to configure plugin behavior via GUI */
 class OLLMSettingTab extends PluginSettingTab {
 	plugin: OLocalLLMPlugin;
 	private indexingProgressBar: HTMLProgressElement | null = null;
@@ -2256,7 +2386,10 @@ class OLLMSettingTab extends PluginSettingTab {
 		return null;
 	}
 }
+// <SETTINGS_TAB_CLASS_END>
 
+// <MODIFY_PROMPT_FUNCTION_START>
+/* Contract: Apply persona modifications to user prompt --> Check persona type and prepend appropriate system prompt --> Return modified prompt string with persona context */
 export function modifyPrompt(aprompt: string, personas: string): string {
 	if (personas === "default") {
 		return aprompt; // No prompt modification for default persona
@@ -2286,6 +2419,7 @@ export function modifyPrompt(aprompt: string, personas: string): string {
 		return aprompt; // No prompt modification for unknown personas
 	}
 }
+// <MODIFY_PROMPT_FUNCTION_END>
 
 async function processText(
 	selectedText: string,
@@ -3317,4 +3451,5 @@ async function processNewsSearch(query: string, plugin: OLocalLLMPlugin) {
 		new Notice("News search failed. Check console for details.");
 	}
 }
-// End of processNewsSearch function and OLocalLLMPlugin class
+// End of processNewsSearch function
+// Main class closing brace should be elsewhere
