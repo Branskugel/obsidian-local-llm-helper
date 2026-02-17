@@ -112,7 +112,7 @@ export class RAGManager {
 					modelName: this.settings.llmModel,
 					temperature: this.settings.temperature,
 					configuration: {
-						baseURL: `${this.settings.serverAddress}/v1`,
+						baseURL: this.settings.serverAddress,
 					},
 				});
 

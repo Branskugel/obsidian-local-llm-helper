@@ -58,7 +58,8 @@ export interface OLocalLLMSettings {
 	maxTokens: number;
 	maxConvHistory: number;
 	outputMode: string;
-	personas: string;
+	personas: string; // Currently selected persona
+	defaultPersona?: string; // Default persona marked with [default] in dropdown
 	providerType: string;
 	responseFormatting: boolean;
 	responseFormatPrepend: string;
@@ -107,7 +108,7 @@ interface CustomPrompt {
 
 // <DEFAULT_SETTINGS_START>
 const DEFAULT_SETTINGS: OLocalLLMSettings = {
-	serverAddress: "http://localhost:11434",
+	serverAddress: "http://localhost:11434/v1",
 	llmModel: "llama3",
 	maxTokens: 1024,
 	temperature: 0.7,
@@ -146,6 +147,18 @@ const DEFAULT_SETTINGS: OLocalLLMSettings = {
 	tavilyApiKey: ""
 };
 // <DEFAULT_SETTINGS_END>
+
+// <NORMALIZE_SERVER_ADDRESS_START>
+/* Contract: Normalize server address to ensure proper protocol --> Add http:// prefix if no protocol is present --> Return normalized server address string */
+function normalizeServerAddress(address: string): string {
+	if (!address) return address;
+	const trimmed = address.trim();
+	if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
+		return `http://${trimmed}`;
+	}
+	return trimmed;
+}
+// <NORMALIZE_SERVER_ADDRESS_END>
 
 // <PERSONAS_DEFINITIONS_START>
 interface Persona {
@@ -411,6 +424,8 @@ export default class OLocalLLMPlugin extends Plugin {
 						"Generate response based on the following text. This is your prompt:",
 						this
 					);
+				} else {
+					new Notice('Please select some text to use as prompt');
 				}
 			},
 		});
@@ -824,7 +839,7 @@ export default class OLocalLLMPlugin extends Plugin {
 			}
 			if (plugin.settings.stream) {
 				const response = await fetch(
-					`${plugin.settings.serverAddress}/v1/chat/completions`,
+					`${plugin.settings.serverAddress}/chat/completions`,
 					{
 						method: "POST",
 						headers: { "Content-Type": "application/json" },
@@ -834,7 +849,7 @@ export default class OLocalLLMPlugin extends Plugin {
 
 				if (!response.ok) {
 					throw new Error(
-						"Error summarizing text (Fetch): " + response.statusText
+						"Error generating text (Fetch): " + response.statusText
 					);
 				}
 
@@ -842,65 +857,68 @@ export default class OLocalLLMPlugin extends Plugin {
 				let responseStr = "";
 				if (!reader) {
 					console.error("Reader not found");
+					throw new Error("Response reader not available for streaming");
 				} else {
 					const decoder = new TextDecoder();
 
-					const readChunk = async () => {
-						if (plugin.isKillSwitchActive) {
-							reader.cancel();
-							new Notice("Text generation stopped by kill switch");
-							plugin.isKillSwitchActive = false; // Reset the kill switch
-							return;
-						}
-
-						const { done, value } = await reader.read();
-
-						if (done) {
-							// Extract actual response if this is a reasoning model
-							const finalResponse = extractActualResponse(responseStr, plugin.settings);
-
-							new Notice("Text generation complete. Voila!");
-							updateConversationHistory(prompt + ": " + selectedText, finalResponse, plugin.conversationHistory, plugin.settings.maxConvHistory);
-							if (plugin.settings.responseFormatting === true) {
-								modifySelectedText(plugin.settings.responseFormatAppend, plugin.app);
+					try {
+						while (true) {
+							if (plugin.isKillSwitchActive) {
+								await reader.cancel();
+								new Notice("Text generation stopped by kill switch");
+								plugin.isKillSwitchActive = false; // Reset the kill switch
+								break;
 							}
-							return;
-						}
 
-						let textChunk = decoder.decode(value);
-						const lines = textChunk.split("\n");
+							const { done, value } = await reader.read();
 
-						for (const line of lines) {
-							if (line.trim()) {
-								try {
-									let modifiedLine = line.replace(
-										/^data:\s*/,
-										""
-									);
-									if (modifiedLine !== "[DONE]") {
-										const data = JSON.parse(modifiedLine);
-										// Check for both content and reasoning in the delta
-										let word = data.choices[0].delta.content || data.choices[0].delta.reasoning || '';
-										if (word) {
-											modifySelectedText(word, plugin.app);
-											responseStr += word;
+							if (done) {
+								// Extract actual response if this is a reasoning model
+								const finalResponse = extractActualResponse(responseStr, plugin.settings);
+
+								new Notice("Text generation complete. Voila!");
+								updateConversationHistory(prompt + ": " + selectedText, finalResponse, plugin.conversationHistory, plugin.settings.maxConvHistory);
+								if (plugin.settings.responseFormatting === true) {
+									modifySelectedText(plugin.settings.responseFormatAppend, plugin.app);
+								}
+								break;
+							}
+
+							let textChunk = decoder.decode(value);
+							const lines = textChunk.split("\n");
+
+							for (const line of lines) {
+								if (line.trim()) {
+									try {
+										let modifiedLine = line.replace(
+											/^data:\s*/,
+											""
+										);
+										if (modifiedLine !== "[DONE]") {
+											const data = JSON.parse(modifiedLine);
+											// Check for both content and reasoning in the delta
+											let word = data.choices[0].delta.content || data.choices[0].delta.reasoning || '';
+											if (word) {
+												modifySelectedText(word, plugin.app);
+												responseStr += word;
+											}
 										}
+									} catch (error) {
+										console.error(
+											"Error parsing JSON chunk:",
+											error
+										);
 									}
-								} catch (error) {
-									console.error(
-										"Error parsing JSON chunk:",
-										error
-									);
 								}
 							}
 						}
-						readChunk();
-					};
-					readChunk();
+					} finally {
+						reader.releaseLock();
+					}
 				}
 			} else {
 				const response = await requestUrl({
-					url: `${plugin.settings.serverAddress}/v1/chat/completions`,
+					url: `${plugin.settings.serverAddress}/chat/completions`,
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
 					body: JSON.stringify(body),
@@ -910,7 +928,14 @@ export default class OLocalLLMPlugin extends Plugin {
 
 				if (statusCode >= 200 && statusCode < 300) {
 					const data = await response.json;
-					let content = data.choices[0].message.content;
+					
+					// Validate response structure
+					if (!data?.choices?.[0]?.message) {
+						console.error("Invalid response format from server:", data);
+						throw new Error("Invalid response from server. Expected 'choices[0].message' in response. Check console for details.");
+					}
+					
+					let content = data.choices[0].message.content || '';
 					let reasoning = data.choices[0].message.reasoning || '';
 
 					// If content is empty but reasoning exists, use reasoning as the source
@@ -968,6 +993,9 @@ export default class OLocalLLMPlugin extends Plugin {
 			DEFAULT_SETTINGS,
 			savedData
 		);
+
+		// Normalize server address to ensure protocol is present
+		this.settings.serverAddress = normalizeServerAddress(this.settings.serverAddress);
 
 		// Populate default custom prompts if not already present
 		if (!this.settings.customPrompts || this.settings.customPrompts.length === 0) {
@@ -1185,13 +1213,13 @@ class OLLMSettingTab extends PluginSettingTab {
 
 		new Setting(containerEl)
 			.setName("Server URL")
-			.setDesc("Full server URL (including protocol and port if needed). E.g., http://localhost:1234 or https://api.example.com")
+			.setDesc("Full server URL including /v1 if required by your provider. E.g., http://localhost:11434/v1 for Ollama or http://localhost:1234/v1 for LM Studio")
 			.addText((text) =>
 				text
 					.setPlaceholder("Enter full server URL")
 					.setValue(this.plugin.settings.serverAddress)
 					.onChange(async (value) => {
-						this.plugin.settings.serverAddress = value;
+						this.plugin.settings.serverAddress = normalizeServerAddress(value);
 						await this.plugin.saveSettings();
 					})
 			);
@@ -1209,10 +1237,10 @@ class OLLMSettingTab extends PluginSettingTab {
 					})
 			);
 
-		// Default System Prompt - styled to match custom prompts section
+		// System Prompts - styled to match custom prompts section
 		const defaultSystemPromptSetting = new Setting(containerEl)
-			.setName("Default System Prompt")
-			.setDesc("System prompt to use when custom prompts don't specify their own system prompt");
+			.setName("System Prompts")
+			.setDesc("Manage personas and their system prompts");
 
 		// Add a specific class to the setting item element to target it with CSS
 		defaultSystemPromptSetting.settingEl.addClass('custom-prompts-setting');
@@ -1253,6 +1281,7 @@ class OLLMSettingTab extends PluginSettingTab {
 				<button class="rename-persona-button">Rename Persona</button>
 				<button class="delete-persona-button mod-warning">Delete Persona</button>
 				<button class="create-persona-button mod-create">Create New Persona</button>
+				<button class="set-default-persona-button">Set as Default</button>
 				<button class="restore-defaults-persona-button">Restore Default Personas</button>
 			</div>
 		`;
@@ -1262,13 +1291,18 @@ class OLLMSettingTab extends PluginSettingTab {
 		// Clear existing options except the first two (Add new and Default)
 		Array.from(personaDropdown.options).slice(2).forEach(option => option.remove());
 
+		// Get the default persona from settings, or use 'default' as fallback
+		const defaultPersonaKey = this.plugin.settings.defaultPersona || 'default';
+
 		// Add options for each persona in the dictionary
 		for (const key in personasDict) {
 			if (personasDict.hasOwnProperty(key) && key !== 'default') {
 				const persona = personasDict[key];
 				const option = document.createElement('option');
 				option.value = key;
-				option.text = typeof persona === 'object' ? persona.displayName : persona;
+				// Add [default] notation if this is the default persona
+				const displayName = typeof persona === 'object' ? persona.displayName : persona;
+				option.text = (key === defaultPersonaKey && key !== 'default') ? `${displayName} [default]` : displayName;
 				personaDropdown.add(option);
 			}
 		}
@@ -1282,6 +1316,7 @@ class OLLMSettingTab extends PluginSettingTab {
 		const renameButton = systemPromptFormContainer.querySelector('.rename-persona-button') as HTMLButtonElement;
 		const deleteButton = systemPromptFormContainer.querySelector('.delete-persona-button') as HTMLButtonElement;
 		const createButton = systemPromptFormContainer.querySelector('.create-persona-button') as HTMLButtonElement;
+		const setDefaultButton = systemPromptFormContainer.querySelector('.set-default-persona-button') as HTMLButtonElement;
 
 		// Set the initial values
 		defaultPersonaDropdown.value = this.plugin.settings.personas;
@@ -1423,6 +1458,40 @@ class OLLMSettingTab extends PluginSettingTab {
 			new Notice(`Updated persona: ${personaName}`);
 		};
 
+		// Add event listener for set default button
+		setDefaultButton.onclick = async () => {
+			const selectedPersona = defaultPersonaDropdown.value;
+			
+			if (selectedPersona === '__add_new__') {
+				new Notice('Cannot set "Add new" as default. Please create a persona first or select an existing one.');
+				return;
+			}
+
+			// Save the selected persona as the default
+			this.plugin.settings.defaultPersona = selectedPersona;
+			await this.plugin.saveSettings();
+
+			// Update the dropdown to show [default] notation
+			const options = defaultPersonaDropdown.options;
+			for (let i = 0; i < options.length; i++) {
+				const option = options[i];
+				if (option.value === selectedPersona) {
+					// Add [default] if not already present
+					if (!option.text.includes('[default]')) {
+						const displayName = option.text;
+						option.text = `${displayName} [default]`;
+					}
+				} else if (option.value !== 'default' && option.value !== '__add_new__') {
+					// Remove [default] from other options
+					if (option.text.includes('[default]')) {
+						option.text = option.text.replace(' [default]', '');
+					}
+				}
+			}
+
+			new Notice(`Set "${selectedPersona}" as default persona`);
+		};
+
 		// Add event listener for rename button
 		renameButton.onclick = async () => {
 			const selectedPersona = defaultPersonaDropdown.value;
@@ -1457,7 +1526,9 @@ class OLLMSettingTab extends PluginSettingTab {
 				const options = defaultPersonaDropdown.options;
 				for (let i = 0; i < options.length; i++) {
 					if (options[i].value === selectedPersona) {
-						options[i].text = newName.trim();
+						// Preserve [default] notation if present
+						const hasDefaultNotation = options[i].text.includes('[default]');
+						options[i].text = hasDefaultNotation ? `${newName.trim()} [default]` : newName.trim();
 						break;
 					}
 				}
@@ -1535,7 +1606,9 @@ class OLLMSettingTab extends PluginSettingTab {
 				// Update the dropdown to include the new persona
 				const newOption = document.createElement('option');
 				newOption.value = newPersonaId;
-				newOption.text = newPersonaName;
+				// Check if this should be marked as default
+				const defaultPersonaKey = this.plugin.settings.defaultPersona;
+				newOption.text = (newPersonaId === defaultPersonaKey) ? `${newPersonaName} [default]` : newPersonaName;
 				defaultPersonaDropdown.add(newOption, 1); // Add after the "Add new" option
 
 				// Select the newly created persona
@@ -1586,12 +1659,14 @@ class OLLMSettingTab extends PluginSettingTab {
 				}
 
 				// Add default persona options back
+				const defaultPersonaKey = this.plugin.settings.defaultPersona || 'default';
 				for (const key in personasDict) {
 					if (personasDict.hasOwnProperty(key) && key !== 'default') {
 						const persona = personasDict[key];
 						const option = document.createElement('option');
 						option.value = key;
-						option.text = typeof persona === 'object' ? persona.displayName : persona;
+						const displayName = typeof persona === 'object' ? persona.displayName : persona;
+						option.text = (key === defaultPersonaKey) ? `${displayName} [default]` : displayName;
 						defaultPersonaDropdown.add(option);
 					}
 				}
@@ -1611,9 +1686,9 @@ class OLLMSettingTab extends PluginSettingTab {
 			}
 		};
 
-		// Custom Prompts Management - using Setting class to match other settings style
+		// Custom Prompts - compact widget similar to System Prompts section
 		const customPromptsSetting = new Setting(containerEl)
-			.setName('Custom Prompts Management')
+			.setName('Custom Prompts')
 			.setDesc('Create and manage custom prompts for specific tasks');
 
 		// Add a specific class to the setting item element to target it with CSS
@@ -1624,6 +1699,12 @@ class OLLMSettingTab extends PluginSettingTab {
 
 		// Add form elements to the container
 		formContainer.innerHTML = `
+			<div class="prompt-input-group">
+				<label class="prompt-field-label">Select Prompt:</label>
+				<select class="custom-prompt-dropdown">
+					<option value="__add_new__">Add new...</option>
+				</select>
+			</div>
 			<div class="prompt-input-group">
 				<label class="prompt-field-label">Prompt Title:</label>
 				<input type="text" class="prompt-title-input" placeholder="Enter a descriptive title for your prompt...">
@@ -1636,290 +1717,324 @@ class OLLMSettingTab extends PluginSettingTab {
 				<label class="prompt-field-label">Persona:</label>
 				<select class="custom-prompt-persona-dropdown">
 					<option value="default">Default</option>
-					<option value="physics">Physics expert</option>
-					<option value="fitness">Fitness expert</option>
-					<option value="developer">Software Developer</option>
-					<option value="stoic">Stoic Philosopher</option>
-					<option value="productmanager">Product Manager</option>
-					<option value="techwriter">Technical Writer</option>
-					<option value="creativewriter">Creative Writer</option>
-					<option value="tpm">Technical Program Manager</option>
-					<option value="engineeringmanager">Engineering Manager</option>
-					<option value="executive">Executive</option>
-					<option value="officeassistant">Office Assistant</option>
-					<option value="custom">Custom/Override</option>
 				</select>
 			</div>
 			<div class="prompt-input-group" id="custom-system-prompt-group" style="display:none;">
 				<label class="prompt-field-label">Custom System Prompt:</label>
 				<textarea class="prompt-system-input" placeholder="Custom system prompt (overrides persona)..." rows="2"></textarea>
 			</div>
+			<div class="prompt-info-group" id="prompt-info-group" style="display:none;">
+				<small class="prompt-system-info-display"></small>
+				<small class="prompt-date-display"></small>
+			</div>
 			<div class="prompt-button-group">
 				<button class="add-prompt-button mod-cta">Add Prompt</button>
+				<button class="update-prompt-button mod-cta" style="display:none;">Update Prompt</button>
+				<button class="delete-prompt-button mod-warning" style="display:none;">Delete Prompt</button>
 				<button class="restore-defaults-prompt-button">Restore Default Prompts</button>
 			</div>
 		`;
 
-		// Dynamically populate the custom prompt persona dropdown with all available personas
-		const customPersonaDropdown = formContainer.querySelector('.custom-prompt-persona-dropdown') as HTMLSelectElement;
-		// Clear ALL existing options to repopulate from scratch
-		Array.from(customPersonaDropdown.options).forEach(option => option.remove());
-
-		// Add options for each persona in the dictionary
-		for (const key in personasDict) {
-			if (personasDict.hasOwnProperty(key)) {
-				const persona = personasDict[key];
-				const option = document.createElement('option');
-				option.value = key;
-				option.text = typeof persona === 'object' ? persona.displayName : persona;
-				customPersonaDropdown.add(option);
-			}
-		}
-		// Add the custom option at the end
-		const customOption = document.createElement('option');
-		customOption.value = 'custom';
-		customOption.text = 'Custom/Override';
-		customPersonaDropdown.add(customOption);
-
-		// Get references to the form elements
+		// Get references to form elements
+		const customPromptDropdown = formContainer.querySelector('.custom-prompt-dropdown') as HTMLSelectElement;
 		const titleInput = formContainer.querySelector('.prompt-title-input') as HTMLInputElement;
 		const promptInput = formContainer.querySelector('.prompt-text-input') as HTMLTextAreaElement;
-		const customPersonaDropdownRef = formContainer.querySelector('.custom-prompt-persona-dropdown') as HTMLSelectElement;
+		const customPersonaDropdown = formContainer.querySelector('.custom-prompt-persona-dropdown') as HTMLSelectElement;
 		const systemPromptInput = formContainer.querySelector('.prompt-system-input') as HTMLTextAreaElement;
 		const customSystemPromptGroup = formContainer.querySelector('#custom-system-prompt-group') as HTMLDivElement;
-		const addButton = formContainer.querySelector('.add-prompt-button') as HTMLButtonElement;
+		const promptInfoGroup = formContainer.querySelector('#prompt-info-group') as HTMLDivElement;
+		const systemInfoDisplay = formContainer.querySelector('.prompt-system-info-display') as HTMLElement;
+		const dateDisplay = formContainer.querySelector('.prompt-date-display') as HTMLElement;
+		const addPromptButton = formContainer.querySelector('.add-prompt-button') as HTMLButtonElement;
+		const updatePromptButton = formContainer.querySelector('.update-prompt-button') as HTMLButtonElement;
+		const deletePromptButton = formContainer.querySelector('.delete-prompt-button') as HTMLButtonElement;
+		const restoreButton = formContainer.querySelector('.restore-defaults-prompt-button') as HTMLButtonElement;
 
-		// Add event listener for persona dropdown change
-		customPersonaDropdownRef.addEventListener('change', () => {
-			if (customPersonaDropdownRef.value === 'custom') {
-				customSystemPromptGroup.style.display = 'flex'; // Show the custom system prompt field
-			} else {
-				customSystemPromptGroup.style.display = 'none'; // Hide the custom system prompt field
-			}
-		});
+		// Track the currently selected prompt ID for edit/delete operations
+		let selectedPromptId: string | null = null;
+		// Track the original prompt data to detect unsaved changes
+		let originalPromptData: CustomPrompt | null = null;
 
-		// Add event listener to the button
-		addButton.onclick = async () => {
-			const title = titleInput.value.trim();
-			const prompt = promptInput.value.trim();
+		// Populate custom prompt dropdown
+		const populatePromptDropdown = () => {
+			// Keep only the "Add new..." option
+			Array.from(customPromptDropdown.options).forEach(option => option.remove());
+			
+			const addNewOption = document.createElement('option');
+			addNewOption.value = '__add_new__';
+			addNewOption.text = 'Add new...';
+			customPromptDropdown.add(addNewOption);
 
-			if (title && prompt) {
-				let systemPrompt: string | undefined;
-
-				if (customPersonaDropdownRef.value === 'custom') {
-					// Use the custom system prompt if 'custom' is selected
-					systemPrompt = systemPromptInput.value.trim() || undefined;
-				} else {
-					// Use the selected persona's prompt or undefined to use default
-					if (customPersonaDropdownRef.value !== 'default') {
-						// For non-default personas, we'll store the persona in the custom prompt
-						// In a more advanced implementation, we would store the actual persona prompt
-						// For now, we'll just store the persona name as a reference
-						systemPrompt = this.getPersonaPrompt(customPersonaDropdownRef.value) || undefined;
-					}
-				}
-
-				const newPrompt: CustomPrompt = {
-					id: `prompt_${Date.now()}`,
-					title: title,
-					prompt: prompt,
-					systemPrompt: systemPrompt,
-					createdAt: Date.now(),
-					updatedAt: Date.now()
-				};
-
-				if (!this.plugin.settings.customPrompts) {
-					this.plugin.settings.customPrompts = [];
-				}
-
-				this.plugin.settings.customPrompts.push(newPrompt);
-				await this.plugin.saveSettings();
-				// Register the command dynamically
-				this.plugin.registerPromptCommand(newPrompt);
-				this.display(); // Refresh the UI
-				new Notice(`Command registered for prompt: ${newPrompt.title}`);
-
-				// Clear inputs
-				titleInput.value = '';
-				promptInput.value = '';
-				personaDropdown.value = 'default';
-				systemPromptInput.value = '';
-				customSystemPromptGroup.style.display = 'none'; // Hide the custom system prompt field after adding
-			} else {
-				new Notice('Please fill in both title and prompt');
+			// Add existing prompts
+			if (this.plugin.settings.customPrompts && this.plugin.settings.customPrompts.length > 0) {
+				const sortedPrompts = [...this.plugin.settings.customPrompts].sort((a, b) => 
+					b.createdAt - a.createdAt
+				);
+				sortedPrompts.forEach(p => {
+					const option = document.createElement('option');
+					option.value = p.id;
+					option.text = p.title;
+					customPromptDropdown.add(option);
+				});
 			}
 		};
 
-		// Add event listener for restore defaults button
-		const restoreDefaultsPromptButton = formContainer.querySelector('.restore-defaults-prompt-button') as HTMLButtonElement;
-		restoreDefaultsPromptButton.onclick = async () => {
+		// Populate persona dropdown with all available personas
+		const populatePersonaDropdown = () => {
+			// Clear ALL existing options to repopulate from scratch
+			Array.from(customPersonaDropdown.options).forEach(option => option.remove());
+
+			// Add options for each persona in the dictionary
+			for (const key in personasDict) {
+				if (personasDict.hasOwnProperty(key)) {
+					const persona = personasDict[key];
+					const option = document.createElement('option');
+					option.value = key;
+					option.text = typeof persona === 'object' ? persona.displayName : persona;
+					customPersonaDropdown.add(option);
+				}
+			}
+			// Add the custom option at the end
+			const customOption = document.createElement('option');
+			customOption.value = 'custom';
+			customOption.text = 'Custom/Override';
+			customPersonaDropdown.add(customOption);
+		};
+
+		// Load prompt data into form fields
+		const loadPromptIntoForm = (prompt: CustomPrompt) => {
+			titleInput.value = prompt.title;
+			promptInput.value = prompt.prompt;
+			selectedPromptId = prompt.id;
+			originalPromptData = { ...prompt };
+
+			// Determine the persona based on the system prompt
+			if (prompt.systemPrompt) {
+				let matchedPersona = 'custom';
+				for (const [key, value] of Object.entries(personasDict)) {
+					if (this.getPersonaPrompt(key) === prompt.systemPrompt) {
+						matchedPersona = key;
+						break;
+					}
+				}
+
+				if (matchedPersona !== 'custom') {
+					customPersonaDropdown.value = matchedPersona;
+					customSystemPromptGroup.style.display = 'none';
+				} else {
+					customPersonaDropdown.value = 'custom';
+					systemPromptInput.value = prompt.systemPrompt;
+					customSystemPromptGroup.style.display = 'flex';
+				}
+			} else {
+				customPersonaDropdown.value = 'default';
+				customSystemPromptGroup.style.display = 'none';
+			}
+
+			// Show prompt info
+			systemInfoDisplay.textContent = prompt.systemPrompt 
+				? `System Prompt: ${prompt.systemPrompt.substring(0, 80)}${prompt.systemPrompt.length > 80 ? '...' : ''}`
+				: 'System Prompt: Default persona will be used';
+			dateDisplay.textContent = `Created: ${new Date(prompt.createdAt).toLocaleDateString()}${prompt.updatedAt !== prompt.createdAt ? ' | Updated: ' + new Date(prompt.updatedAt).toLocaleDateString() : ''}`;
+			promptInfoGroup.style.display = 'block';
+
+			// Show update/delete buttons, hide add button
+			addPromptButton.style.display = 'none';
+			updatePromptButton.style.display = 'inline-block';
+			deletePromptButton.style.display = 'inline-block';
+		};
+
+		// Clear form for new prompt
+		const clearFormForNewPrompt = () => {
+			titleInput.value = '';
+			promptInput.value = '';
+			customPersonaDropdown.value = 'default';
+			systemPromptInput.value = '';
+			customSystemPromptGroup.style.display = 'none';
+			promptInfoGroup.style.display = 'none';
+			selectedPromptId = null;
+			originalPromptData = null;
+
+			// Show add button, hide update/delete buttons
+			addPromptButton.style.display = 'inline-block';
+			updatePromptButton.style.display = 'none';
+			deletePromptButton.style.display = 'none';
+		};
+
+		// Initialize UI
+		populatePromptDropdown();
+		populatePersonaDropdown();
+		clearFormForNewPrompt();
+
+		// Event listener for prompt dropdown change
+		customPromptDropdown.addEventListener('change', async () => {
+			const selectedValue = customPromptDropdown.value;
+
+			// Check for unsaved changes before switching
+			if (selectedPromptId && originalPromptData && 
+				(titleInput.value.trim() !== originalPromptData.title || 
+				 promptInput.value.trim() !== originalPromptData.prompt)) {
+				
+				const userChoice = confirm('You have unsaved changes. Do you want to save them before switching?');
+				if (userChoice && selectedPromptId) {
+					// Save current changes first
+					await saveCurrentPrompt();
+				}
+			}
+
+			if (selectedValue === '__add_new__') {
+				clearFormForNewPrompt();
+				new Notice("Enter prompt details and click 'Add Prompt'");
+			} else {
+				// Find and load the selected prompt
+				const prompt = this.plugin.settings.customPrompts?.find(p => p.id === selectedValue);
+				if (prompt) {
+					loadPromptIntoForm(prompt);
+				}
+			}
+		});
+
+		// Event listener for persona dropdown change
+		customPersonaDropdown.addEventListener('change', () => {
+			if (customPersonaDropdown.value === 'custom') {
+				customSystemPromptGroup.style.display = 'flex';
+			} else {
+				customSystemPromptGroup.style.display = 'none';
+			}
+		});
+
+		// Save current prompt helper function
+		const saveCurrentPrompt = async () => {
+			if (!selectedPromptId) return;
+
+			const prompt = this.plugin.settings.customPrompts?.find(p => p.id === selectedPromptId);
+			if (!prompt) return;
+
+			const title = titleInput.value.trim();
+			const promptText = promptInput.value.trim();
+
+			if (!title || !promptText) {
+				new Notice('Please fill in both title and prompt');
+				return false;
+			}
+
+			let systemPrompt: string | undefined;
+			if (customPersonaDropdown.value === 'custom') {
+				systemPrompt = systemPromptInput.value.trim() || undefined;
+			} else if (customPersonaDropdown.value !== 'default') {
+				systemPrompt = this.getPersonaPrompt(customPersonaDropdown.value) || undefined;
+			} else {
+				systemPrompt = undefined;
+			}
+
+			prompt.title = title;
+			prompt.prompt = promptText;
+			prompt.systemPrompt = systemPrompt;
+			prompt.updatedAt = Date.now();
+
+			await this.plugin.saveSettings();
+			this.plugin.unregisterPromptCommand(prompt.id);
+			this.plugin.registerPromptCommand(prompt);
+			
+			originalPromptData = { ...prompt };
+			systemInfoDisplay.textContent = systemPrompt 
+				? `System Prompt: ${systemPrompt.substring(0, 80)}${systemPrompt.length > 80 ? '...' : ''}`
+				: 'System Prompt: Default persona will be used';
+			dateDisplay.textContent = `Created: ${new Date(prompt.createdAt).toLocaleDateString()} | Updated: ${new Date(prompt.updatedAt).toLocaleDateString()}`;
+			
+			new Notice(`Updated prompt: ${prompt.title}`);
+			return true;
+		};
+
+		// Add button click handler
+		addPromptButton.onclick = async () => {
+			const title = titleInput.value.trim();
+			const promptText = promptInput.value.trim();
+
+			if (!title || !promptText) {
+				new Notice('Please fill in both title and prompt');
+				return;
+			}
+
+			let systemPrompt: string | undefined;
+			if (customPersonaDropdown.value === 'custom') {
+				systemPrompt = systemPromptInput.value.trim() || undefined;
+			} else if (customPersonaDropdown.value !== 'default') {
+				systemPrompt = this.getPersonaPrompt(customPersonaDropdown.value) || undefined;
+			} else {
+				systemPrompt = undefined;
+			}
+
+			const newPrompt: CustomPrompt = {
+				id: `prompt_${Date.now()}`,
+				title: title,
+				prompt: promptText,
+				systemPrompt: systemPrompt,
+				createdAt: Date.now(),
+				updatedAt: Date.now()
+			};
+
+			if (!this.plugin.settings.customPrompts) {
+				this.plugin.settings.customPrompts = [];
+			}
+
+			this.plugin.settings.customPrompts.push(newPrompt);
+			await this.plugin.saveSettings();
+			this.plugin.registerPromptCommand(newPrompt);
+			
+			new Notice(`Command registered for prompt: ${newPrompt.title}`);
+			
+			// Refresh dropdown and select the new prompt
+			populatePromptDropdown();
+			customPromptDropdown.value = newPrompt.id;
+			loadPromptIntoForm(newPrompt);
+		};
+
+		// Update button click handler
+		updatePromptButton.onclick = async () => {
+			await saveCurrentPrompt();
+		};
+
+		// Delete button click handler
+		deletePromptButton.onclick = async () => {
+			if (!selectedPromptId) return;
+
+			const prompt = this.plugin.settings.customPrompts?.find(p => p.id === selectedPromptId);
+			const promptTitle = prompt?.title || 'this prompt';
+
+			if (confirm(`Are you sure you want to delete "${promptTitle}"?`)) {
+				this.plugin.unregisterPromptCommand(selectedPromptId);
+				this.plugin.settings.customPrompts = this.plugin.settings.customPrompts?.filter(p => p.id !== selectedPromptId);
+				await this.plugin.saveSettings();
+				
+				new Notice(`Command unregistered for prompt: ${promptTitle}`);
+				
+				// Refresh dropdown and clear form
+				populatePromptDropdown();
+				clearFormForNewPrompt();
+			}
+		};
+
+		// Restore defaults button click handler
+		restoreButton.onclick = async () => {
 			const userConfirmed = confirm('Are you sure you want to restore the default custom prompts? This will replace all your current custom prompts.');
 			if (userConfirmed) {
 				this.plugin.settings.customPrompts = await this.plugin.loadDefaultCustomPrompts();
 				await this.plugin.saveSettings();
-				this.display(); // Refresh the UI
+				
+				// Unregister all existing commands and register new ones
+				if (this.plugin.settings.customPrompts) {
+					this.plugin.settings.customPrompts.forEach(p => {
+						this.plugin.unregisterPromptCommand(p.id);
+						this.plugin.registerPromptCommand(p);
+					});
+				}
+				
+				populatePromptDropdown();
+				clearFormForNewPrompt();
 				new Notice('Default custom prompts restored successfully!');
 			}
 		};
-
-		// Add a container for saved prompts that will be appended after the form
-		const savedPromptsContainer = containerEl.createDiv({ cls: 'saved-prompts-container' });
-
-		// Display existing prompts
-		if (this.plugin.settings.customPrompts && this.plugin.settings.customPrompts.length > 0) {
-			savedPromptsContainer.createEl('h4', { text: 'Saved Prompts', cls: 'saved-prompts-header' });
-
-			// Search input for prompts
-			const searchInput = savedPromptsContainer.createEl('input', {
-				type: 'text',
-				placeholder: 'Search prompts by title...',
-				cls: 'prompt-search-input'
-			});
-
-			searchInput.oninput = () => {
-				const searchTerm = searchInput.value.toLowerCase();
-				const promptElements = savedPromptsContainer.querySelectorAll('.prompt-item');
-				promptElements.forEach(element => {
-					const title = element.getAttribute('data-title')?.toLowerCase() || '';
-					(element as HTMLElement).style.display = title.includes(searchTerm) ? 'block' : 'none';
-				});
-			};
-
-			// Sort prompts by creation date (newest first)
-			const sortedPrompts = [...this.plugin.settings.customPrompts].sort((a, b) => b.createdAt - a.createdAt);
-
-			sortedPrompts.forEach((customPrompt, index) => {
-				const promptContainer = savedPromptsContainer.createEl('div', {
-					cls: 'prompt-item',
-					attr: { 'data-title': customPrompt.title.toLowerCase() }
-				});
-
-				const titleEl = promptContainer.createEl('div', {
-					text: customPrompt.title,
-					cls: 'prompt-title'
-				});
-
-				const promptEl = promptContainer.createEl('div', {
-					text: customPrompt.prompt,
-					cls: 'prompt-content'
-				});
-
-				const actionsContainer = promptContainer.createEl('div', { cls: 'prompt-actions' });
-
-				// Show prompt information
-				const infoContainer = promptContainer.createEl('div', { cls: 'prompt-info' });
-
-				// Add system prompt info
-				if (customPrompt.systemPrompt) {
-					const systemPromptInfo = infoContainer.createEl('small', {
-						text: `System Prompt: ${customPrompt.systemPrompt.substring(0, 60)}${customPrompt.systemPrompt.length > 60 ? '...' : ''}`,
-						cls: 'prompt-system-info'
-					});
-				} else {
-					const systemPromptInfo = infoContainer.createEl('small', {
-						text: 'System Prompt: Default persona will be used',
-						cls: 'prompt-system-default'
-					});
-				}
-
-				// Add creation date
-				infoContainer.createEl('small', {
-					text: `Created: ${new Date(customPrompt.createdAt).toLocaleDateString()}`,
-					cls: 'prompt-created-date'
-				});
-
-				// Edit button
-				const editButton = actionsContainer.createEl('button', {
-					text: 'Edit',
-					cls: 'edit-prompt-button mod-warning'
-				});
-
-				editButton.onclick = () => {
-					titleInput.value = customPrompt.title;
-					promptInput.value = customPrompt.prompt;
-
-					// Determine the persona based on the system prompt
-					if (customPrompt.systemPrompt) {
-						// Check if the system prompt matches any predefined persona
-						let matchedPersona = 'custom';
-						for (const [key, value] of Object.entries(personasDict)) {
-							if (this.getPersonaPrompt(key) === customPrompt.systemPrompt) {
-								matchedPersona = key;
-								break;
-							}
-						}
-
-						if (matchedPersona !== 'custom') {
-							personaDropdown.value = matchedPersona;
-							customSystemPromptGroup.style.display = 'none';
-						} else {
-							personaDropdown.value = 'custom';
-							systemPromptInput.value = customPrompt.systemPrompt || '';
-							customSystemPromptGroup.style.display = 'flex';
-						}
-					} else {
-						personaDropdown.value = 'default';
-						customSystemPromptGroup.style.display = 'none';
-					}
-
-					// Change button to update mode
-					addButton.textContent = 'Update Prompt';
-					addButton.onclick = async () => {
-						if (titleInput.value.trim() && promptInput.value.trim()) {
-							customPrompt.title = titleInput.value.trim();
-							customPrompt.prompt = promptInput.value.trim();
-
-							// Set the system prompt based on the selected persona
-							if (personaDropdown.value === 'custom') {
-								customPrompt.systemPrompt = systemPromptInput.value.trim() || undefined;
-							} else if (personaDropdown.value !== 'default') {
-								// For non-default personas, set the corresponding system prompt
-								customPrompt.systemPrompt = this.getPersonaPrompt(personaDropdown.value) || undefined;
-							} else {
-								// For default persona, remove the system prompt to use the global default
-								customPrompt.systemPrompt = undefined;
-							}
-
-							customPrompt.updatedAt = Date.now();
-
-							await this.plugin.saveSettings();
-							// Unregister the old command and register the updated one
-							this.plugin.unregisterPromptCommand(customPrompt.id);
-							this.plugin.registerPromptCommand(customPrompt);
-							this.display(); // Refresh the UI
-							new Notice(`Command updated for prompt: ${customPrompt.title}`);
-
-							// Reset button to add mode
-							addButton.textContent = 'Add Prompt';
-							titleInput.value = '';
-							promptInput.value = '';
-							personaDropdown.value = 'default';
-							systemPromptInput.value = '';
-							customSystemPromptGroup.style.display = 'none';
-						} else {
-							new Notice('Please fill in both title and prompt');
-						}
-					};
-				};
-
-				// Delete button
-				const deleteButton = actionsContainer.createEl('button', {
-					text: 'Delete',
-					cls: 'delete-prompt-button mod-warning'
-				});
-
-				deleteButton.onclick = async () => {
-					if (confirm(`Are you sure you want to delete the prompt "${customPrompt.title}"?`)) {
-						// Unregister the command before deleting the prompt
-						this.plugin.unregisterPromptCommand(customPrompt.id);
-						this.plugin.settings.customPrompts = this.plugin.settings.customPrompts?.filter(p => p.id !== customPrompt.id);
-						await this.plugin.saveSettings();
-						this.display(); // Refresh the UI
-						new Notice(`Command unregistered for prompt: ${customPrompt.title}`);
-					}
-				};
-			});
-		}
 
 		new Setting(containerEl)
 			.setName("Streaming")
@@ -2464,7 +2579,7 @@ async function processText(
 		}
 		if (plugin.settings.stream) {
 			const response = await fetch(
-				`${plugin.settings.serverAddress}/v1/chat/completions`,
+				`${plugin.settings.serverAddress}/chat/completions`,
 				{
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
@@ -2482,62 +2597,65 @@ async function processText(
 			let responseStr = "";
 			if (!reader) {
 				console.error("Reader not found");
+				throw new Error("Response reader not available for streaming");
 			} else {
 				const decoder = new TextDecoder();
 
-				const readChunk = async () => {
-					if (plugin.isKillSwitchActive) {
-						reader.cancel();
-						new Notice("Text generation stopped by kill switch");
-						plugin.isKillSwitchActive = false; // Reset the kill switch
-						return;
-					}
-
-					const { done, value } = await reader.read();
-
-					if (done) {
-						new Notice("Text generation complete. Voila!");
-						updateConversationHistory(prompt + ": " + selectedText, responseStr, plugin.conversationHistory, plugin.settings.maxConvHistory);
-						if (plugin.settings.responseFormatting === true) {
-							modifySelectedText(plugin.settings.responseFormatAppend, plugin.app);
+				try {
+					while (true) {
+						if (plugin.isKillSwitchActive) {
+							await reader.cancel();
+							new Notice("Text generation stopped by kill switch");
+							plugin.isKillSwitchActive = false; // Reset the kill switch
+							break;
 						}
-						return;
-					}
 
-					let textChunk = decoder.decode(value);
-					const lines = textChunk.split("\n");
+						const { done, value } = await reader.read();
 
-					for (const line of lines) {
-						if (line.trim()) {
-							try {
-								let modifiedLine = line.replace(
-									/^data:\s*/,
-									""
-								);
-								if (modifiedLine !== "[DONE]") {
-									const data = JSON.parse(modifiedLine);
-									if (data.choices[0].delta.content) {
-										let word =
-											data.choices[0].delta.content;
-										modifySelectedText(word, plugin.app);
-										responseStr += word;
+						if (done) {
+							new Notice("Text generation complete. Voila!");
+							updateConversationHistory(prompt + ": " + selectedText, responseStr, plugin.conversationHistory, plugin.settings.maxConvHistory);
+							if (plugin.settings.responseFormatting === true) {
+								modifySelectedText(plugin.settings.responseFormatAppend, plugin.app);
+							}
+							break;
+						}
+
+						let textChunk = decoder.decode(value);
+						const lines = textChunk.split("\n");
+
+						for (const line of lines) {
+							if (line.trim()) {
+								try {
+									let modifiedLine = line.replace(
+										/^data:\s*/,
+										""
+									);
+									if (modifiedLine !== "[DONE]") {
+										const data = JSON.parse(modifiedLine);
+										if (data.choices[0].delta.content) {
+											let word =
+												data.choices[0].delta.content;
+											modifySelectedText(word, plugin.app);
+											responseStr += word;
+										}
 									}
+								} catch (error) {
+									console.error(
+										"Error parsing JSON chunk:",
+										error
+									);
 								}
-							} catch (error) {
-								console.error(
-									"Error parsing JSON chunk:",
-									error
-								);
 							}
 						}
 					}
-					readChunk();
-				};
-				readChunk();
+				} finally {
+					reader.releaseLock();
+				}
 			}
 		} else {
 			const response = await requestUrl({
-				url: `${plugin.settings.serverAddress}/v1/chat/completions`,
+				url: `${plugin.settings.serverAddress}/chat/completions`,
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify(body),
@@ -2547,7 +2665,14 @@ async function processText(
 
 			if (statusCode >= 200 && statusCode < 300) {
 				const data = await response.json;
-				let content = data.choices[0].message.content;
+				
+				// Validate response structure
+				if (!data?.choices?.[0]?.message) {
+					console.error("Invalid response format from server:", data);
+					throw new Error("Invalid response from server. Expected 'choices[0].message' in response. Check console for details.");
+				}
+				
+				let content = data.choices[0].message.content || '';
 				let reasoning = data.choices[0].message.reasoning || '';
 
 				// If content is empty but reasoning exists, use reasoning as the source
@@ -2574,14 +2699,14 @@ async function processText(
 				}
 			} else {
 				throw new Error(
-					"Error summarizing text (requestUrl): " + response.text
+					"Error generating text (requestUrl): " + response.text
 				);
 			}
 		}
 	} catch (error) {
 		console.error("Error during request:", error);
 		new Notice(
-			"Error summarizing text: Check plugin console for more details!"
+			"Error generating text: Check plugin console for more details!"
 		);
 	}
 	if (statusBarItemEl) {
@@ -2838,7 +2963,7 @@ async function processChatInput(text: string, personas: string, chatContainer: H
 		};
 
 		const response = await requestUrl({
-			url: `${pluginSettings.serverAddress}/v1/chat/completions`,
+			url: `${pluginSettings.serverAddress}/chat/completions`,
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify(body),

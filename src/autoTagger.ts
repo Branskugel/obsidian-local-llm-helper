@@ -39,7 +39,7 @@ async function generateTags(text: string, settings: OLocalLLMSettings): Promise<
 	};
 
 	const response = await requestUrl({
-		url: `${settings.serverAddress}/v1/chat/completions`,
+		url: `${settings.serverAddress}/chat/completions`,
 		method: "POST",
 		headers: { "Content-Type": "application/json" },
 		body: JSON.stringify(body)

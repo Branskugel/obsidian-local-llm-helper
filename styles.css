@@ -244,61 +244,36 @@
     font-style: italic;
 }
 
-.add-prompt-button {
+/* Base button styles for prompt/persona management - unified styling except colors */
+.prompt-button {
     padding: 8px 16px;
-    background-color: var(--interactive-accent);
-    color: var(--text-on-accent);
-    border: none;
+    border: 1px solid transparent; /* Reserve space for border to ensure consistent height */
     border-radius: 4px;
     cursor: pointer;
+    font-size: 0.9em;
+    align-self: center; /* Align buttons vertically */
+    box-sizing: border-box; /* Include border in height calculation */
+    white-space: nowrap; /* Prevent text wrapping */
+    text-align: center; /* Center text in button */
+}
+
+/* Add Prompt button */
+.add-prompt-button {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
 }
 
 .add-prompt-button:hover {
     background-color: var(--interactive-accent-hover);
 }
 
-.prompt-item {
-    margin-bottom: 15px;
-    padding: 12px;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 6px;
-    background-color: var(--background-primary);
-}
-
-.prompt-title {
-    font-weight: bold;
-    margin-bottom: 5px;
-    color: var(--text-normal);
-}
-
-.prompt-content {
-    margin-bottom: 10px;
-    padding: 8px;
-    background-color: var(--background-secondary);
-    border-radius: 4px;
-    font-size: 0.9em;
-    color: var(--text-muted);
-    white-space: pre-wrap;
-}
-
-.prompt-actions {
-    display: flex;
-    gap: 8px;
-}
-
-.edit-prompt-button, .delete-prompt-button {
-    padding: 6px 12px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-}
-
-.edit-prompt-button {
+/* Update and Delete buttons for compact prompt widget */
+.update-prompt-button {
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
 }
 
-.edit-prompt-button:hover {
+.update-prompt-button:hover {
     background-color: var(--interactive-accent-hover);
 }
 
@@ -309,24 +284,6 @@
 
 .delete-prompt-button:hover {
     background-color: var(--text-error-hover);
-}
-
-.prompt-info {
-    margin-top: 8px;
-    padding-top: 8px;
-    border-top: 1px dashed var(--background-modifier-border);
-    font-size: 0.85em;
-    color: var(--text-muted);
-}
-
-.prompt-search-input {
-    width: 100%;
-    margin-bottom: 15px;
-    padding: 8px;
-    border: 1px solid var(--background-modifier-border);
-    border-radius: 4px;
-    background-color: var(--background-primary);
-    color: var(--text-normal);
 }
 
 /* Prompt Selection Modal */
@@ -396,6 +353,62 @@
     font-weight: 600;
     color: var(--text-normal);
     font-size: 0.9em;
+}
+
+/* Custom prompt dropdown - matches persona dropdown style */
+.custom-prompt-dropdown {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-normal);
+    font-size: 0.9em;
+    font-family: var(--font-interface);
+    cursor: pointer;
+    margin-bottom: 12px;
+    box-sizing: border-box;
+    min-height: 36px;
+    line-height: 1.4;
+    white-space: normal;
+    overflow: visible;
+}
+
+.custom-prompt-dropdown option {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+}
+
+.custom-prompt-dropdown:focus {
+    outline: none;
+    border-color: var(--interactive-accent);
+    box-shadow: 0 0 0 2px var(--interactive-accent-hover);
+}
+
+/* Prompt info group - displays system prompt and date info */
+.prompt-info-group {
+    width: 100%;
+    padding: 8px;
+    margin-top: 8px;
+    margin-bottom: 12px;
+    background-color: var(--background-secondary);
+    border-radius: 4px;
+    border-left: 3px solid var(--interactive-accent);
+}
+
+.prompt-system-info-display {
+    display: block;
+    font-style: italic;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    font-size: 0.85em;
+}
+
+.prompt-date-display {
+    display: block;
+    color: var(--text-faint);
+    font-size: 0.8em;
 }
 
 /* Override the default setting-item layout to stack title and controls vertically */
@@ -481,26 +494,6 @@
     font-style: italic;
 }
 
-.custom-prompt-form-section button.add-prompt-button {
-    width: auto; /* Natural width for button */
-    margin-top: 8px;
-    align-self: flex-start; /* Align button to the left */
-}
-
-/* Saved prompts container */
-.saved-prompts-container {
-    margin: 20px 0px;
-    padding-top: 15px;
-    /* border-top: 1px solid var(--background-modifier-border); */
-}
-
-.saved-prompts-header {
-    margin-bottom: 10px;
-    font-size: 0.95em;
-    font-weight: 600;
-    color: var(--text-normal);
-}
-
 /* System prompt info in saved prompts */
 .prompt-system-info {
     display: block;
@@ -552,15 +545,10 @@
     box-sizing: border-box;
 }
 
-/* Buttons for persona management */
+/* Buttons for persona management - extend base prompt-button styles */
 .update-persona-button, .delete-persona-button, .create-persona-button, .rename-persona-button {
-    margin-top: 8px;
-    padding: 6px 12px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.9em;
-    align-self: flex-start; /* Align buttons to the top */
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
 }
 
 .update-persona-button {
@@ -575,7 +563,6 @@
 .rename-persona-button {
     background-color: var(--background-modifier-border);
     color: var(--text-normal);
-    margin-left: 8px;
 }
 
 .rename-persona-button:hover {
@@ -585,7 +572,6 @@
 .delete-persona-button {
     background-color: var(--text-error);
     color: var(--text-on-accent);
-    margin-left: 8px;
 }
 
 .delete-persona-button:hover {
@@ -595,7 +581,6 @@
 .create-persona-button {
     background-color: var(--background-modifier-success);
     color: var(--text-on-accent);
-    margin-left: 8px;
 }
 
 .create-persona-button:hover {
@@ -609,21 +594,25 @@
     gap: 8px;
     margin-top: 12px;
     width: 100%;
+    align-items: center; /* Vertically align all buttons */
 }
 
-/* Restore defaults button styling */
-.restore-defaults-prompt-button, .restore-defaults-persona-button {
-    background-color: var(--background-modifier-border);
-    color: var(--text-normal);
-    padding: 6px 12px;
-    border: 1px solid var(--background-modifier-border);
+/* Restore defaults button styling - extends base prompt-button styles */
+.restore-defaults-prompt-button, .restore-defaults-persona-button, .set-default-persona-button {
+    padding: 8px 16px;
+    border: 1px solid transparent; /* No visible border - matches other buttons */
     border-radius: 4px;
     cursor: pointer;
     font-size: 0.9em;
-    align-self: flex-start; /* Align buttons to the top */
+    align-self: center;
+    box-sizing: border-box;
+    white-space: nowrap;
+    text-align: center;
+    background-color: var(--background-modifier-border);
+    color: var(--text-normal);
 }
 
-.restore-defaults-prompt-button:hover, .restore-defaults-persona-button:hover {
+.restore-defaults-prompt-button:hover, .restore-defaults-persona-button:hover, .set-default-persona-button:hover {
     background-color: var(--background-modifier-border-hover);
 }
 
