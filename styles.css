@@ -689,3 +689,40 @@
     min-height: 36px; /* Ensure enough height for text to display properly */
     line-height: 1.4; /* Improve text readability */
 }
+
+/* Hotkey button for custom prompts */
+.hotkey-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 4px;
+    background-color: var(--background-primary);
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+    height: 36px; /* Match dropdown height */
+    min-width: 36px; /* Square button */
+}
+
+.hotkey-button:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+    border-color: var(--interactive-accent);
+}
+
+.hotkey-button svg {
+    width: 16px;
+    height: 16px;
+}
+
+.hotkey-button:hover svg {
+    color: var(--interactive-accent);
+}
+
+/* Custom prompt dropdown container - ensure proper alignment */
+.prompt-input-group > div[style*="display: flex"] {
+    align-items: stretch;
+}

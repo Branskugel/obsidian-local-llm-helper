@@ -11,8 +11,6 @@ const CHANGELOGS: { version: string; date: string; changes: string }[] = [
 - Fixed settings not saving when closing settings tab quickly
 
 **New**
-- Tavily search provider support (alternative to Brave)
-- Search provider picker in settings
 - Enhanced search engine support with multiple options (Brave, SearXNG, DuckDuckGo, Firecrawl, Perplexica, Custom)
 `,
 	},
@@ -23,10 +21,6 @@ const CHANGELOGS: { version: string; date: string; changes: string }[] = [
 **Bug Fixes**
 - Fixed embedding model changes not taking effect until plugin restart
 - Fixed settings not saving when closing settings tab quickly
-
-**New**
-- Tavily search provider support (alternative to Brave)
-- Search provider picker in settings
 `,
 	},
 	{

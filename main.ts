@@ -80,8 +80,7 @@ export interface OLocalLLMSettings {
 	searxngUrl?: string; // SearXNG instance URL
 	perplexicaUrl?: string; // Perplexica API URL
 	firecrawlUrl?: string; // Firecrawl API URL
-	searchProvider: string;
-	tavilyApiKey: string;
+	savedPersonas?: { [key: string]: string }; // User-saved persona system prompts
 }
 // <SETTINGS_INTERFACE_END>
 
@@ -136,18 +135,13 @@ const DEFAULT_SETTINGS: OLocalLLMSettings = {
 		{ start: "Рассуждение:", end: "\n\n" }, // Russian for "Reasoning:"
 		{ start: "reasoning:", end: "\n\n" } // Lowercase
 	]), // Default markers to identify reasoning sections
-	defaultSystemPrompt: "You are a text editor AI agent who provides concise and helpful responses and fulfills user's tasks, following their instructions. \
-		Always try to use same language as the one that's dominant in a {user_request} (exclude this instruction and programming code from this rule) unless \
-		specifically told otherwise. Use markdown headers of multiple levels via hash symbols. \
-		Never use bold and/or italics for headings. Below is the {user_request}, it describes a task, write a response that appropriately completes the task:  {{user_request}}", // Default system prompt,
+	defaultSystemPrompt: "You are a text editor AI agent who provides concise and helpful responses and fulfills user's tasks, following their instructions. Always try to use same language as the one that's dominant in a user prompt (exclude this instruction and programming code from this rule) unless specifically told otherwise. Use markdown headers of multiple levels via hash symbols. Never use bold and/or italics for headers.", // Default system prompt,
 	searchEngine: "brave", // Default search engine
 	customSearchUrl: "", // Default custom search URL
 	customSearchApiKey: "", // Default custom search API key
 	searxngUrl: "https://searx.work", // Default SearXNG instance
 	perplexicaUrl: "https://api.perplexica.com", // Default Perplexica API URL
 	firecrawlUrl: "https://api.firecrawl.dev", // Default Firecrawl API URL
-	searchProvider: "tavily",
-	tavilyApiKey: ""
 };
 // <DEFAULT_SETTINGS_END>
 
@@ -173,10 +167,7 @@ interface Persona {
 let personasDict: { [key: string]: Persona } = {
 	"textassistant": {
 		displayName: "Text Assistant",
-		systemPrompt: "You are a text editor AI agent who provides concise and helpful responses and fulfills user's tasks, following their instructions. \
-		Always try to use same language as the one that's dominant in a {user_request} (exclude this instruction and programming code from this rule) unless \
-		specifically told otherwise. Use markdown headers of multiple levels via hash symbols. \
-		Never use bold and/or italics for headings. Below is the {user_request}, it describes a task, write a response that appropriately completes the task:  {{user_request}}"
+		systemPrompt: "You are a text editor AI agent who provides concise and helpful responses and fulfills user's tasks, following their instructions. Always try to use same language as the one that's dominant in a user prompt (exclude this instruction and programming code from this rule) unless specifically told otherwise. Use markdown headers of multiple levels via hash symbols. Never use bold and/or italics for headers."
 	},
 	"physics": {
 		displayName: "Physics expert",
@@ -1003,6 +994,23 @@ export default class OLocalLLMPlugin extends Plugin {
 		// Migrate legacy customPrompt to new customPrompts array if needed
 		this.migrateLegacyCustomPrompt();
 
+		// Initialize personasDict from saved settings if user has saved custom personas
+		if (this.settings.savedPersonas) {
+			for (const [key, prompt] of Object.entries(this.settings.savedPersonas)) {
+				if (personasDict[key]) {
+					// Update existing persona's system prompt
+					personasDict[key].systemPrompt = prompt;
+				} else {
+					// Add new custom persona (for future extensibility)
+					personasDict[key] = {
+						displayName: key.charAt(0).toUpperCase() + key.slice(1),
+						systemPrompt: prompt
+					};
+				}
+			}
+			console.log('✅ LLM Helper: Loaded', Object.keys(this.settings.savedPersonas).length, 'saved persona(s)');
+		}
+
 		console.log('✅ LLM Helper: Final settings after merge:', {
 			provider: this.settings.providerType,
 			server: this.settings.serverAddress,
@@ -1304,9 +1312,10 @@ class OLLMSettingTab extends PluginSettingTab {
 		const duplicateButton = systemPromptFormContainer.querySelector('.duplicate-persona-button') as HTMLButtonElement;
 		const setDefaultButton = systemPromptFormContainer.querySelector('.set-default-persona-button') as HTMLButtonElement;
 
-		// Set the initial values
-		defaultPersonaDropdown.value = this.plugin.settings.personas;
-		systemPromptTextArea.value = this.getPersonaPrompt(this.plugin.settings.personas) || (this.plugin.settings.defaultSystemPrompt || DEFAULT_SETTINGS.defaultSystemPrompt!);
+		// Set the initial values - use defaultPersona if set, otherwise use personas or fallback to 'textassistant'
+		const initialPersona = this.plugin.settings.defaultPersona || this.plugin.settings.personas || 'textassistant';
+		defaultPersonaDropdown.value = initialPersona;
+		systemPromptTextArea.value = this.getPersonaPrompt(initialPersona) || (this.plugin.settings.defaultSystemPrompt || DEFAULT_SETTINGS.defaultSystemPrompt!);
 
 		// Track the original prompt for the currently selected persona to detect changes
 		let originalPromptValue: string = systemPromptTextArea.value;
@@ -1424,6 +1433,12 @@ class OLLMSettingTab extends PluginSettingTab {
 			if (selectedPersona === this.plugin.settings.defaultPersona) {
 				this.plugin.settings.defaultSystemPrompt = newPrompt;
 			}
+
+			// Save the updated persona prompt to savedPersonas for persistence
+			if (!this.plugin.settings.savedPersonas) {
+				this.plugin.settings.savedPersonas = {};
+			}
+			this.plugin.settings.savedPersonas[selectedPersona] = newPrompt;
 
 			// Save the updated settings
 			await this.plugin.saveSettings();
@@ -1638,6 +1653,10 @@ class OLLMSettingTab extends PluginSettingTab {
 					personasDict[key] = value;
 				}
 
+				// Clear saved personas to restore defaults on next reload
+				this.plugin.settings.savedPersonas = {};
+				await this.plugin.saveSettings();
+
 				// Update the dropdown options
 				const personaDropdownOptions = defaultPersonaDropdown.options;
 				// Clear all options except the first one ('__add_new__')
@@ -1688,9 +1707,27 @@ class OLLMSettingTab extends PluginSettingTab {
 		formContainer.innerHTML = `
 			<div class="prompt-input-group">
 				<label class="prompt-field-label">Select Prompt:</label>
-				<select class="custom-prompt-dropdown">
-					<option value="__add_new__">Add new...</option>
-				</select>
+				<div style="display: flex; gap: 8px; align-items: flex-start; width: 100%;">
+					<select class="custom-prompt-dropdown" style="flex: 1; min-width: 0;">
+						<option value="__add_new__">Add new...</option>
+					</select>
+					<button class="hotkey-button" type="button" title="Configure hotkey for this prompt">
+						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+							<rect x="2" y="4" width="20" height="16" rx="2"></rect>
+							<line x1="6" y1="8" x2="6" y2="8"></line>
+							<line x1="10" y1="8" x2="10" y2="8"></line>
+							<line x1="14" y1="8" x2="14" y2="8"></line>
+							<line x1="18" y1="8" x2="18" y2="8"></line>
+							<line x1="6" y1="12" x2="6" y2="12"></line>
+							<line x1="10" y1="12" x2="10" y2="12"></line>
+							<line x1="14" y1="12" x2="14" y2="12"></line>
+							<line x1="18" y1="12" x2="18" y2="12"></line>
+							<line x1="6" y1="16" x2="6" y2="16"></line>
+							<line x1="10" y1="16" x2="10" y2="16"></line>
+							<line x1="14" y1="16" x2="14" y2="16"></line>
+						</svg>
+					</button>
+				</div>
 			</div>
 			<div class="prompt-input-group">
 				<label class="prompt-field-label">Prompt Title:</label>
@@ -1736,6 +1773,7 @@ class OLLMSettingTab extends PluginSettingTab {
 		const updatePromptButton = formContainer.querySelector('.update-prompt-button') as HTMLButtonElement;
 		const deletePromptButton = formContainer.querySelector('.delete-prompt-button') as HTMLButtonElement;
 		const restoreButton = formContainer.querySelector('.restore-defaults-prompt-button') as HTMLButtonElement;
+		const hotkeyButton = formContainer.querySelector('.hotkey-button') as HTMLButtonElement;
 
 		// Track the currently selected prompt ID for edit/delete operations
 		let selectedPromptId: string | null = null;
@@ -1754,7 +1792,7 @@ class OLLMSettingTab extends PluginSettingTab {
 
 			// Add existing prompts
 			if (this.plugin.settings.customPrompts && this.plugin.settings.customPrompts.length > 0) {
-				const sortedPrompts = [...this.plugin.settings.customPrompts].sort((a, b) => 
+				const sortedPrompts = [...this.plugin.settings.customPrompts].sort((a, b) =>
 					b.createdAt - a.createdAt
 				);
 				sortedPrompts.forEach(p => {
@@ -1763,6 +1801,11 @@ class OLLMSettingTab extends PluginSettingTab {
 					option.text = p.title;
 					customPromptDropdown.add(option);
 				});
+				
+				// Select the first prompt by default (most recently created)
+				if (sortedPrompts.length > 0 && customPromptDropdown.value === '__add_new__') {
+					customPromptDropdown.value = sortedPrompts[0].id;
+				}
 			}
 		};
 
@@ -1851,7 +1894,21 @@ class OLLMSettingTab extends PluginSettingTab {
 		// Initialize UI
 		populatePromptDropdown();
 		populatePersonaDropdown();
-		clearFormForNewPrompt();
+		
+		// After populating dropdown, load the first prompt if available
+		if (this.plugin.settings.customPrompts && this.plugin.settings.customPrompts.length > 0) {
+			const sortedPrompts = [...this.plugin.settings.customPrompts].sort((a, b) =>
+				b.createdAt - a.createdAt
+			);
+			if (sortedPrompts.length > 0 && customPromptDropdown.value !== '__add_new__') {
+				const firstPrompt = sortedPrompts[0];
+				loadPromptIntoForm(firstPrompt);
+			} else {
+				clearFormForNewPrompt();
+			}
+		} else {
+			clearFormForNewPrompt();
+		}
 
 		// Event listener for prompt dropdown change
 		customPromptDropdown.addEventListener('change', async () => {
@@ -1887,6 +1944,53 @@ class OLLMSettingTab extends PluginSettingTab {
 				customSystemPromptGroup.style.display = 'flex';
 			} else {
 				customSystemPromptGroup.style.display = 'none';
+			}
+		});
+
+		// Event listener for hotkey button click
+		hotkeyButton.addEventListener('click', () => {
+			const selectedPromptId = customPromptDropdown.value;
+
+			if (selectedPromptId === '__add_new__' || !selectedPromptId) {
+				new Notice('Select a custom prompt first');
+				return;
+			}
+
+			const prompt = this.plugin.settings.customPrompts?.find(p => p.id === selectedPromptId);
+			if (!prompt) {
+				new Notice('Prompt not found');
+				return;
+			}
+
+			// Command name format matches the one used in registerPromptCommand: "Run - {promptTitle}"
+			const commandName = `Run - ${prompt.title}`;
+
+			// Open the hotkeys settings tab using Obsidian's internal API
+			// Cast to any to access internal setting property
+			const appWithSettings = this.app as any;
+			if (appWithSettings.setting) {
+				appWithSettings.setting.open();
+				appWithSettings.setting.openTabById('hotkeys');
+
+				// Wait for the hotkeys tab to render, then fill the search
+				// Use longer delay to ensure DOM is ready
+				setTimeout(() => {
+					const hotkeyTab = appWithSettings.setting.activeTab;
+					if (hotkeyTab && hotkeyTab.containerEl) {
+						// Try multiple selectors to find the search input
+						const searchInput = hotkeyTab.containerEl.querySelector('.hotkey-search') as HTMLInputElement
+							|| hotkeyTab.containerEl.querySelector('input[placeholder*="Filter"]') as HTMLInputElement
+							|| hotkeyTab.containerEl.querySelector('input[type="text"]') as HTMLInputElement;
+						
+						if (searchInput) {
+							searchInput.value = commandName;
+							searchInput.dispatchEvent(new Event('input', { bubbles: true }));
+							searchInput.dispatchEvent(new Event('change', { bubbles: true }));
+							searchInput.focus();
+							searchInput.select();
+						}
+					}
+				}, 300);
 			}
 		});
 
@@ -3317,57 +3421,17 @@ function formatSearchResults(results: any, searchEngine: string, searchType: 'we
 	return "No results found or unsupported format.";
 }
 
-// Tavily search function from upstream
-async function tavilySearch(query: string, topic: string, plugin: OLocalLLMPlugin): Promise<string> {
-	const body: any = {
-		query,
-		topic,
-		max_results: 5,
-		search_depth: "basic",
-		include_answer: false,
-	};
-	if (topic === "news") {
-		body.time_range = "day";
-	}
-
-	const response = await requestUrl({
-		url: "https://api.tavily.com/search",
-		method: "POST",
-		headers: {
-			"Authorization": `Bearer ${plugin.settings.tavilyApiKey}`,
-			"Content-Type": "application/json",
-		},
-		body: JSON.stringify(body),
-	});
-
-	if (response.status !== 200) {
-		throw new Error("Tavily search failed: " + response.status);
-	}
-
-	const results = response.json.results;
-	return results.map((result: any) =>
-		`${result.title}\n${result.content}\nSource: ${result.url}\n\n`
-	).join('');
-}
-
 async function processWebSearch(query: string, plugin: OLocalLLMPlugin) {
-	// First check if the user has configured the search engine in the new settings
-	const provider = plugin.settings.searchProvider;
-
-	// Check if API key is required and available for the legacy search engines
+	// Check if API key is required and available for the search engines
 	const requiresApiKey = plugin.settings.searchEngine !== 'duckduckgo' && plugin.settings.searchEngine !== 'custom';
 	const apiKey = getSearchApiKey(plugin);
 
-	if (requiresApiKey && !apiKey && provider !== "tavily") {
+	if (requiresApiKey && !apiKey) {
 		new Notice(`Please set your ${searchEnginesDict[plugin.settings.searchEngine] || 'search engine'} API key in settings`);
 		return;
 	}
 
-	if (provider === "tavily" && !plugin.settings.tavilyApiKey) {
-		new Notice("Please set your Tavily API key in settings");
-		return;
-	}
-	if (provider === "brave" && !plugin.settings.braveSearchApiKey && !apiKey) {
+	if (plugin.settings.searchEngine === 'brave' && !plugin.settings.braveSearchApiKey && !apiKey) {
 		new Notice("Please set your Brave Search API key in settings");
 		return;
 	}
@@ -3375,16 +3439,7 @@ async function processWebSearch(query: string, plugin: OLocalLLMPlugin) {
 	new Notice(`Searching the web using ${searchEnginesDict[plugin.settings.searchEngine] || 'selected search engine'}...`);
 
 	try {
-		// Use the new search provider if configured, otherwise use the legacy search engine
-		if (provider === "tavily") {
-			// Use Tavily search
-			const context = await tavilySearch(query, "general", plugin);
-			processText(
-				`Search results for "${query}":\n\n${context}`,
-				"Summarize these search results concisely. Use bullet points for key facts and cite sources inline as [Source](url).",
-				plugin
-			);
-		} else if (provider === "brave") {
+		if (plugin.settings.searchEngine === 'brave') {
 			// Use Brave search with new settings
 			const response = await requestUrl({
 				url: `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=5&summary=1&extra_snippets=1&text_decorations=1&result_filter=web,discussions,faq,news&spellcheck=1`,
@@ -3442,23 +3497,16 @@ async function processWebSearch(query: string, plugin: OLocalLLMPlugin) {
 }
 
 async function processNewsSearch(query: string, plugin: OLocalLLMPlugin) {
-	// First check if the user has configured the search engine in the new settings
-	const provider = plugin.settings.searchProvider;
-
-	// Check if API key is required and available for the legacy search engines
+	// Check if API key is required and available for the search engines
 	const requiresApiKey = plugin.settings.searchEngine !== 'duckduckgo' && plugin.settings.searchEngine !== 'custom';
 	const apiKey = getSearchApiKey(plugin);
 
-	if (requiresApiKey && !apiKey && provider !== "tavily") {
+	if (requiresApiKey && !apiKey) {
 		new Notice(`Please set your ${searchEnginesDict[plugin.settings.searchEngine] || 'search engine'} API key in settings`);
 		return;
 	}
 
-	if (provider === "tavily" && !plugin.settings.tavilyApiKey) {
-		new Notice("Please set your Tavily API key in settings");
-		return;
-	}
-	if (provider === "brave" && !plugin.settings.braveSearchApiKey && !apiKey) {
+	if (plugin.settings.searchEngine === 'brave' && !plugin.settings.braveSearchApiKey && !apiKey) {
 		new Notice("Please set your Brave Search API key in settings");
 		return;
 	}
@@ -3466,16 +3514,7 @@ async function processNewsSearch(query: string, plugin: OLocalLLMPlugin) {
 	new Notice(`Searching news using ${searchEnginesDict[plugin.settings.searchEngine] || 'selected search engine'}...`);
 
 	try {
-		// Use the new search provider if configured, otherwise use the legacy search engine
-		if (provider === "tavily") {
-			// Use Tavily news search
-			const context = await tavilySearch(query, "news", plugin);
-			processText(
-				`News results for "${query}":\n\n${context}`,
-				"Summarize these news results concisely. List key developments as bullet points and cite sources inline as [Source](url).",
-				plugin
-			);
-		} else if (provider === "brave") {
+		if (plugin.settings.searchEngine === 'brave') {
 			// Use Brave news search with new settings
 			const response = await requestUrl({
 				url: `https://api.search.brave.com/res/v1/news/search?q=${encodeURIComponent(query)}&count=5&search_lang=en&freshness=pd`,
