@@ -50,6 +50,20 @@ Seamlessly integrate your local LLM with Obsidian. Process large text chunks, tr
 
 ## Release notes
 
+v2.4.0
+* **Remove Tavily Integration**: Removed Tavily search provider to simplify codebase; all search functionality now uses direct search engine APIs
+* **Hotkey Configuration Button**: Added keyboard icon button next to custom prompts dropdown for quick hotkey setup
+  - Button opens Hotkeys settings with search auto-filled to the selected prompt's command
+  - First custom prompt automatically selected by default when opening settings
+* **Persistent Persona Settings**: User-modified persona system prompts now persist across Obsidian restarts
+  - Changes saved to data.json instead of reverting to hardcoded defaults
+  - "Restore Default Personas" button resets to original built-in personas
+* **Improved Text Assistant Prompt**: Updated default system prompt to be more concise and effective
+  - Better language detection and markdown formatting instructions
+  - Removed redundant template placeholders
+* **UI Improvements**: Better vertical alignment of custom prompts dropdown and hotkey button
+* **Code Cleanup**: Removed duplicate main.css file (styles.css is the active stylesheet)
+
 v2.3.3
 * **Merge with Upstream**: Incorporated upstream version 2.3.2 changes while preserving custom search engine functionality
 * **Enhanced RAG System**: Improved embedding model handling with better re-indexing when settings change
