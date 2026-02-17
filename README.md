@@ -2,6 +2,8 @@
 
 Seamlessly integrate your local LLM with Obsidian. Process large text chunks, transform content with AI, chat with your notes and maintain data privacy — all without leaving your notes.
 
+> **Important Note**: This repository is a fork of the original [Local LLM Helper](https://github.com/manimohans/obsidian-local-llm-helper) by Mani Mohan. This fork incorporates most of the upstream version 2.3.2 changes, particularly regarding RAG and embedding functionality, but will be developed separately going forward with its own feature roadmap and enhancements.
+
 ## Core Features
 
 #### Local LLM Integration:
@@ -47,6 +49,16 @@ Seamlessly integrate your local LLM with Obsidian. Process large text chunks, tr
 
 
 ## Release notes
+
+v2.3.3
+* **Merge with Upstream**: Incorporated upstream version 2.3.2 changes while preserving custom search engine functionality
+* **Enhanced RAG System**: Improved embedding model handling with better re-indexing when settings change
+* **Search Provider Options**: Added Tavily search provider support alongside Brave Search
+* **Debounced Settings Save**: Prevents lag when typing in settings with automatic save on close
+* **AI-Friendly Code Tags**: Added XML-like tags and contract comments throughout codebase for better AI assistance
+* **Plugin Loading Fix**: Fixed manifest.json to properly load in Obsidian
+* **Comprehensive Search**: Maintains support for multiple search engines (Brave, SearXNG, DuckDuckGo, Firecrawl, Perplexica, Custom)
+
 v2.2.1
 * **Critical Bug Fix**: Fixed re-embedding issue that caused embeddings to regenerate on every app restart
 * **Proper Persistent Storage**: Embeddings now persist correctly across Obsidian restarts without data conflicts
