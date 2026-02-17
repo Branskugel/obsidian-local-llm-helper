@@ -116,13 +116,13 @@ const DEFAULT_SETTINGS: OLocalLLMSettings = {
 	stream: false,
 	customPrompt: "create a todo list from the following text:", // Kept for backward compatibility
 	outputMode: "replace",
-	personas: "default",
+	personas: "textassistant",
 	maxConvHistory: 0,
 	responseFormatting: false,
 	responseFormatPrepend: "``` LLM Helper - generated response \n\n",
 	responseFormatAppend: "\n\n```",
 	lastVersion: "0.0.0",
-	embeddingModelName: "mxbai-embed-large",
+	embeddingModelName: "nomic-embed-text",
 	braveSearchApiKey: "",
 	openAIApiKey: "lm-studio",
 	customPrompts: [], // Will be populated from JSON during initialization
@@ -136,7 +136,10 @@ const DEFAULT_SETTINGS: OLocalLLMSettings = {
 		{ start: "Рассуждение:", end: "\n\n" }, // Russian for "Reasoning:"
 		{ start: "reasoning:", end: "\n\n" } // Lowercase
 	]), // Default markers to identify reasoning sections
-	defaultSystemPrompt: "You are my text editor AI agent who provides concise and helpful responses.", // Default system prompt,
+	defaultSystemPrompt: "You are a text editor AI agent who provides concise and helpful responses and fulfills user's tasks, following their instructions. \
+		Always try to use same language as the one that's dominant in a {user_request} (exclude this instruction and programming code from this rule) unless \
+		specifically told otherwise. Use markdown headers of multiple levels via hash symbols. \
+		Never use bold and/or italics for headings. Below is the {user_request}, it describes a task, write a response that appropriately completes the task:  {{user_request}}", // Default system prompt,
 	searchEngine: "brave", // Default search engine
 	customSearchUrl: "", // Default custom search URL
 	customSearchApiKey: "", // Default custom search API key
@@ -168,9 +171,12 @@ interface Persona {
 
 // Global personas dictionary - initialized with default values
 let personasDict: { [key: string]: Persona } = {
-	"default": {
-		displayName: "Default",
-		systemPrompt: "You are my text editor AI agent who provides concise and helpful responses."
+	"textassistant": {
+		displayName: "Text Assistant",
+		systemPrompt: "You are a text editor AI agent who provides concise and helpful responses and fulfills user's tasks, following their instructions. \
+		Always try to use same language as the one that's dominant in a {user_request} (exclude this instruction and programming code from this rule) unless \
+		specifically told otherwise. Use markdown headers of multiple levels via hash symbols. \
+		Never use bold and/or italics for headings. Below is the {user_request}, it describes a task, write a response that appropriately completes the task:  {{user_request}}"
 	},
 	"physics": {
 		displayName: "Physics expert",
@@ -199,22 +205,6 @@ let personasDict: { [key: string]: Persona } = {
 	"creativewriter": {
 		displayName: "Creative Writer",
 		systemPrompt: "You are a very creative and experienced writer. Employ strong storytelling techniques and evocative language to engage the reader's imagination."
-	},
-	"tpm": {
-		displayName: "Technical Program Manager",
-		systemPrompt: "You are an experienced technical program manager. Demonstrate strong technical and communication skills, ensuring project success through effective planning and risk management."
-	},
-	"engineeringmanager": {
-		displayName: "Engineering Manager",
-		systemPrompt: "You are an experienced engineering manager. Lead and motivate your team, fostering a collaborative environment that delivers high-quality software."
-	},
-	"executive": {
-		displayName: "Executive",
-		systemPrompt: "You are a top-level executive. Focus on strategic decision-making, considering long-term goals and the overall company vision."
-	},
-	"officeassistant": {
-		displayName: "Office Assistant",
-		systemPrompt: "You are a courteous and helpful office assistant. Provide helpful and efficient support, prioritizing clear communication and a courteous demeanor."
 	}
 };
 // <PERSONAS_DEFINITIONS_END>
@@ -321,6 +311,14 @@ export default class OLocalLLMPlugin extends Plugin {
 			embeddingModel: this.settings.embeddingModelName,
 			llmModel: this.settings.llmModel
 		});
+
+		// Установить Text Assistant как персону по умолчанию при первом запуске
+		if (!this.settings.defaultPersona) {
+			this.settings.defaultPersona = 'textassistant';
+			this.settings.defaultSystemPrompt = personasDict['textassistant'].systemPrompt;
+			await this.saveSettings();
+			console.log('✅ LLM Helper: Text Assistant установлен как системный промпт по умолчанию');
+		}
 
 		// Initialize command registry to track dynamically created commands
 		this.commandRegistry = new Map();
@@ -1254,18 +1252,6 @@ class OLLMSettingTab extends PluginSettingTab {
 				<label class="prompt-field-label">Persona:</label>
 				<select class="persona-dropdown">
 					<option value="__add_new__">Add new</option>
-					<option value="default">Default</option>
-					<option value="physics">Physics expert</option>
-					<option value="fitness">Fitness expert</option>
-					<option value="developer">Software Developer</option>
-					<option value="stoic">Stoic Philosopher</option>
-					<option value="productmanager">Product Manager</option>
-					<option value="techwriter">Technical Writer</option>
-					<option value="creativewriter">Creative Writer</option>
-					<option value="tpm">Technical Program Manager</option>
-					<option value="engineeringmanager">Engineering Manager</option>
-					<option value="executive">Executive</option>
-					<option value="officeassistant">Office Assistant</option>
 				</select>
 			</div>
 			<div class="prompt-input-group" id="new-persona-name-group" style="display:none;">
@@ -1280,7 +1266,7 @@ class OLLMSettingTab extends PluginSettingTab {
 				<button class="update-persona-button mod-cta">Update Persona</button>
 				<button class="rename-persona-button">Rename Persona</button>
 				<button class="delete-persona-button mod-warning">Delete Persona</button>
-				<button class="create-persona-button mod-create">Create New Persona</button>
+				<button class="duplicate-persona-button">Duplicate Persona</button>
 				<button class="set-default-persona-button">Set as Default</button>
 				<button class="restore-defaults-persona-button">Restore Default Personas</button>
 			</div>
@@ -1288,21 +1274,21 @@ class OLLMSettingTab extends PluginSettingTab {
 
 		// Dynamically populate the dropdown with persona options
 		const personaDropdown = systemPromptFormContainer.querySelector('.persona-dropdown') as HTMLSelectElement;
-		// Clear existing options except the first two (Add new and Default)
-		Array.from(personaDropdown.options).slice(2).forEach(option => option.remove());
+		// Clear existing options except the first one (Add new)
+		Array.from(personaDropdown.options).slice(1).forEach(option => option.remove());
 
-		// Get the default persona from settings, or use 'default' as fallback
-		const defaultPersonaKey = this.plugin.settings.defaultPersona || 'default';
+		// Get the default persona from settings, or use 'textassistant' as fallback
+		const defaultPersonaKey = this.plugin.settings.defaultPersona || 'textassistant';
 
 		// Add options for each persona in the dictionary
 		for (const key in personasDict) {
-			if (personasDict.hasOwnProperty(key) && key !== 'default') {
+			if (personasDict.hasOwnProperty(key)) {
 				const persona = personasDict[key];
 				const option = document.createElement('option');
 				option.value = key;
 				// Add [default] notation if this is the default persona
 				const displayName = typeof persona === 'object' ? persona.displayName : persona;
-				option.text = (key === defaultPersonaKey && key !== 'default') ? `${displayName} [default]` : displayName;
+				option.text = (key === defaultPersonaKey) ? `${displayName} [default]` : displayName;
 				personaDropdown.add(option);
 			}
 		}
@@ -1315,7 +1301,7 @@ class OLLMSettingTab extends PluginSettingTab {
 		const updateButton = systemPromptFormContainer.querySelector('.update-persona-button') as HTMLButtonElement;
 		const renameButton = systemPromptFormContainer.querySelector('.rename-persona-button') as HTMLButtonElement;
 		const deleteButton = systemPromptFormContainer.querySelector('.delete-persona-button') as HTMLButtonElement;
-		const createButton = systemPromptFormContainer.querySelector('.create-persona-button') as HTMLButtonElement;
+		const duplicateButton = systemPromptFormContainer.querySelector('.duplicate-persona-button') as HTMLButtonElement;
 		const setDefaultButton = systemPromptFormContainer.querySelector('.set-default-persona-button') as HTMLButtonElement;
 
 		// Set the initial values
@@ -1373,49 +1359,33 @@ class OLLMSettingTab extends PluginSettingTab {
 				}
 			}
 
-			if (selectedPersona === '__add_new__') {
-				// Show the new persona form
-				newPersonaNameGroup.style.display = 'block';
-				createButton.style.display = 'inline-block';
-				updateButton.style.display = 'none';
+			// Regular persona selection
+			// Load the correct prompt for the selected persona
+			const personaPrompt = this.getPersonaPrompt(selectedPersona);
+			if (personaPrompt) {
+				systemPromptTextArea.value = personaPrompt;
+				originalPromptValue = personaPrompt; // Update the original value tracker
+			} else {
+				// Fallback to default if no specific prompt is found
+				const fallbackPrompt = this.plugin.settings.defaultSystemPrompt || DEFAULT_SETTINGS.defaultSystemPrompt!;
+				systemPromptTextArea.value = fallbackPrompt;
+				originalPromptValue = fallbackPrompt; // Update the original value tracker
+			}
+
+			// Show/hide buttons based on selected persona
+			if (selectedPersona === 'default' || selectedPersona === '__add_new__') {
 				renameButton.style.display = 'none';
 				deleteButton.style.display = 'none';
-				systemPromptTextArea.value = '';
-				newPersonaNameInput.value = '';
-				originalPromptValue = ''; // Update the original value tracker
-				new Notice("Enter a name for the new persona and its prompt, then click 'Create New'");
+				duplicateButton.style.display = 'none';
 			} else {
-				// Regular persona selection
-				// Load the correct prompt for the selected persona
-				const personaPrompt = this.getPersonaPrompt(selectedPersona);
-				if (personaPrompt) {
-					systemPromptTextArea.value = personaPrompt;
-					originalPromptValue = personaPrompt; // Update the original value tracker
-				} else {
-					// Fallback to default if no specific prompt is found
-					const fallbackPrompt = this.plugin.settings.defaultSystemPrompt || DEFAULT_SETTINGS.defaultSystemPrompt!;
-					systemPromptTextArea.value = fallbackPrompt;
-					originalPromptValue = fallbackPrompt; // Update the original value tracker
-				}
-
-				// Hide the new persona form and show other buttons
-				newPersonaNameGroup.style.display = 'none';
-				createButton.style.display = 'none';
-				updateButton.style.display = 'inline-block';
-
-				// Show/hide rename and delete buttons based on selected persona
-				if (selectedPersona === 'default') {
-					renameButton.style.display = 'none';
-					deleteButton.style.display = 'none';
-				} else {
-					renameButton.style.display = 'inline-block';
-					deleteButton.style.display = 'inline-block';
-				}
-
-				// Update the global setting too
-				this.plugin.settings.personas = selectedPersona;
-				await this.plugin.saveSettings();
+				renameButton.style.display = 'inline-block';
+				deleteButton.style.display = 'inline-block';
+				duplicateButton.style.display = 'inline-block';
 			}
+
+			// Update the global setting too
+			this.plugin.settings.personas = selectedPersona;
+			await this.plugin.saveSettings();
 		});
 
 		// Add event listener for changes to the system prompt textarea
@@ -1429,24 +1399,30 @@ class OLLMSettingTab extends PluginSettingTab {
 			const selectedPersona = defaultPersonaDropdown.value;
 			const newPrompt = systemPromptTextArea.value.trim();
 
-			if (selectedPersona === 'default') {
-				this.plugin.settings.defaultSystemPrompt = newPrompt;
+			if (selectedPersona === '__add_new__') {
+				new Notice('Cannot update "Add new" option. Please create a persona first.');
+				return;
+			}
+
+			// Update the specific persona's prompt in the personas dictionary
+			const existingPersona = personasDict[selectedPersona];
+			if (existingPersona && typeof existingPersona === 'object' && 'displayName' in existingPersona) {
+				// Update existing structured persona
+				(personasDict as any)[selectedPersona] = {
+					displayName: (existingPersona as Persona).displayName,
+					systemPrompt: newPrompt
+				};
 			} else {
-				// Update the specific persona's prompt in the personas dictionary
-				const existingPersona = personasDict[selectedPersona];
-				if (existingPersona && typeof existingPersona === 'object' && 'displayName' in existingPersona) {
-					// Update existing structured persona
-					(personasDict as any)[selectedPersona] = {
-						displayName: (existingPersona as Persona).displayName,
-						systemPrompt: newPrompt
-					};
-				} else {
-					// Create new structured persona (for custom personas that might be stored as strings)
-					(personasDict as any)[selectedPersona] = {
-						displayName: typeof existingPersona === 'string' ? existingPersona : selectedPersona,
-						systemPrompt: newPrompt
-					};
-				}
+				// Create new structured persona (for custom personas that might be stored as strings)
+				(personasDict as any)[selectedPersona] = {
+					displayName: typeof existingPersona === 'string' ? existingPersona : selectedPersona,
+					systemPrompt: newPrompt
+				};
+			}
+
+			// Also update defaultSystemPrompt if this is the default persona
+			if (selectedPersona === this.plugin.settings.defaultPersona) {
+				this.plugin.settings.defaultSystemPrompt = newPrompt;
 			}
 
 			// Save the updated settings
@@ -1461,7 +1437,7 @@ class OLLMSettingTab extends PluginSettingTab {
 		// Add event listener for set default button
 		setDefaultButton.onclick = async () => {
 			const selectedPersona = defaultPersonaDropdown.value;
-			
+
 			if (selectedPersona === '__add_new__') {
 				new Notice('Cannot set "Add new" as default. Please create a persona first or select an existing one.');
 				return;
@@ -1469,6 +1445,10 @@ class OLLMSettingTab extends PluginSettingTab {
 
 			// Save the selected persona as the default
 			this.plugin.settings.defaultPersona = selectedPersona;
+			await this.plugin.saveSettings();
+
+			// Also update defaultSystemPrompt to match the selected persona's prompt
+			this.plugin.settings.defaultSystemPrompt = personasDict[selectedPersona].systemPrompt;
 			await this.plugin.saveSettings();
 
 			// Update the dropdown to show [default] notation
@@ -1481,7 +1461,7 @@ class OLLMSettingTab extends PluginSettingTab {
 						const displayName = option.text;
 						option.text = `${displayName} [default]`;
 					}
-				} else if (option.value !== 'default' && option.value !== '__add_new__') {
+				} else if (option.value !== '__add_new__') {
 					// Remove [default] from other options
 					if (option.text.includes('[default]')) {
 						option.text = option.text.replace(' [default]', '');
@@ -1496,8 +1476,8 @@ class OLLMSettingTab extends PluginSettingTab {
 		renameButton.onclick = async () => {
 			const selectedPersona = defaultPersonaDropdown.value;
 
-			if (selectedPersona === 'default') {
-				new Notice('Cannot rename the default persona');
+			if (selectedPersona === '__add_new__') {
+				new Notice('Cannot rename "Add new" option. Please select an existing persona.');
 				return;
 			}
 
@@ -1545,8 +1525,8 @@ class OLLMSettingTab extends PluginSettingTab {
 		// Add event listener for delete button
 		deleteButton.onclick = async () => {
 			const selectedPersona = defaultPersonaDropdown.value;
-			if (selectedPersona === 'default') {
-				new Notice('Cannot delete default persona');
+			if (selectedPersona === '__add_new__') {
+				new Notice('Cannot delete "Add new" option');
 				return;
 			}
 
@@ -1572,62 +1552,69 @@ class OLLMSettingTab extends PluginSettingTab {
 					personasDict: personasDict
 				});
 
-				// Reset to default persona
-				defaultPersonaDropdown.value = 'default';
+				// Reset to textassistant persona
+				defaultPersonaDropdown.value = 'textassistant';
 				systemPromptTextArea.value = this.plugin.settings.defaultSystemPrompt || DEFAULT_SETTINGS.defaultSystemPrompt!;
-				this.plugin.settings.personas = 'default';
+				this.plugin.settings.personas = 'textassistant';
 				await this.plugin.saveSettings();
+
 
 				new Notice(`Deleted persona: ${personaName}`);
 			}
 		};
 
-		// Add event listener for create button
-		createButton.onclick = async () => {
-			const newPersonaName = newPersonaNameInput.value.trim();
+		// Add event listener for duplicate button
+		duplicateButton.onclick = async () => {
+			const selectedPersona = defaultPersonaDropdown.value;
+
+			if (selectedPersona === '__add_new__') {
+				new Notice('Cannot duplicate "Add new" option. Please select an existing persona.');
+				return;
+			}
+
+			const personaToDuplicate = personasDict[selectedPersona];
+			const originalName = typeof personaToDuplicate === 'object' ? personaToDuplicate.displayName : personaToDuplicate || selectedPersona;
+			const newPersonaName = `${originalName} (Copy)`;
 			const newPersonaPrompt = systemPromptTextArea.value.trim();
 
-			if (newPersonaName && newPersonaPrompt) {
-				// Generate a unique ID for the new persona
-				const newPersonaId = `persona_${Date.now()}_${newPersonaName.replace(/\s+/g, '_').toLowerCase()}`;
+			// Generate a unique ID for the new persona
+			const newPersonaId = `persona_${Date.now()}_${newPersonaName.replace(/\s+/g, '_').toLowerCase()}`;
 
-				// Add the new persona to the personas dictionary with the new structure
-				(personasDict as any)[newPersonaId] = {
-					displayName: newPersonaName,
-					systemPrompt: newPersonaPrompt
-				};
+			// Add the new persona to the personas dictionary
+			(personasDict as any)[newPersonaId] = {
+				displayName: newPersonaName,
+				systemPrompt: newPersonaPrompt
+			};
 
-				// Save the updated personas dictionary
-				await this.plugin.saveData({
-					...this.plugin.settings,
-					personasDict: personasDict
-				});
+			// Save the updated personas dictionary
+			await this.plugin.saveData({
+				...this.plugin.settings,
+				personasDict: personasDict
+			});
 
-				// Update the dropdown to include the new persona
-				const newOption = document.createElement('option');
-				newOption.value = newPersonaId;
-				// Check if this should be marked as default
-				const defaultPersonaKey = this.plugin.settings.defaultPersona;
-				newOption.text = (newPersonaId === defaultPersonaKey) ? `${newPersonaName} [default]` : newPersonaName;
-				defaultPersonaDropdown.add(newOption, 1); // Add after the "Add new" option
+			// Update the dropdown to include the new persona
+			const newOption = document.createElement('option');
+			newOption.value = newPersonaId;
+			newOption.text = newPersonaName;
+			defaultPersonaDropdown.add(newOption);
 
-				// Select the newly created persona
-				defaultPersonaDropdown.value = newPersonaId;
-				this.plugin.settings.personas = newPersonaId;
-				await this.plugin.saveSettings();
+			// Select the newly created persona
+			defaultPersonaDropdown.value = newPersonaId;
+			this.plugin.settings.personas = newPersonaId;
+			await this.plugin.saveSettings();
 
-				// Reset the form
-				newPersonaNameInput.value = '';
-				newPersonaNameGroup.style.display = 'none';
-				createButton.style.display = 'none';
-				updateButton.style.display = 'inline-block';
-				renameButton.style.display = 'inline-block';
-				deleteButton.style.display = 'inline-block';
-
-				new Notice(`Created new persona: ${newPersonaName}`);
-			} else {
-				new Notice("Both name and prompt are required!");
+			// Update dropdown to show [default] notation if needed
+			const defaultPersonaKey = this.plugin.settings.defaultPersona;
+			const options = defaultPersonaDropdown.options;
+			for (let i = 0; i < options.length; i++) {
+				const option = options[i];
+				if (option.value !== '__add_new__') {
+					const displayName = option.text.replace(' [default]', '');
+					option.text = (option.value === defaultPersonaKey) ? `${displayName} [default]` : displayName;
+				}
 			}
+
+			new Notice(`Duplicated persona: ${newPersonaName}`);
 		};
 
 		// Add event listener for restore defaults button for personas
@@ -1659,9 +1646,9 @@ class OLLMSettingTab extends PluginSettingTab {
 				}
 
 				// Add default persona options back
-				const defaultPersonaKey = this.plugin.settings.defaultPersona || 'default';
+				const defaultPersonaKey = this.plugin.settings.defaultPersona || 'textassistant';
 				for (const key in personasDict) {
-					if (personasDict.hasOwnProperty(key) && key !== 'default') {
+					if (personasDict.hasOwnProperty(key)) {
 						const persona = personasDict[key];
 						const option = document.createElement('option');
 						option.value = key;
@@ -1671,10 +1658,10 @@ class OLLMSettingTab extends PluginSettingTab {
 					}
 				}
 
-				// Reset to default persona
-				defaultPersonaDropdown.value = 'default';
+				// Reset to textassistant persona
+				defaultPersonaDropdown.value = 'textassistant';
 				systemPromptTextArea.value = this.plugin.settings.defaultSystemPrompt || DEFAULT_SETTINGS.defaultSystemPrompt!;
-				this.plugin.settings.personas = 'default';
+				this.plugin.settings.personas = 'textassistant';
 
 				// Save the updated personas dictionary
 				await this.plugin.saveData({
@@ -1716,7 +1703,7 @@ class OLLMSettingTab extends PluginSettingTab {
 			<div class="prompt-input-group">
 				<label class="prompt-field-label">Persona:</label>
 				<select class="custom-prompt-persona-dropdown">
-					<option value="default">Default</option>
+					<option value="textassistant">Text Assistant</option>
 				</select>
 			</div>
 			<div class="prompt-input-group" id="custom-system-prompt-group" style="display:none;">
@@ -1827,7 +1814,7 @@ class OLLMSettingTab extends PluginSettingTab {
 					customSystemPromptGroup.style.display = 'flex';
 				}
 			} else {
-				customPersonaDropdown.value = 'default';
+				customPersonaDropdown.value = 'textassistant';
 				customSystemPromptGroup.style.display = 'none';
 			}
 
@@ -1921,7 +1908,7 @@ class OLLMSettingTab extends PluginSettingTab {
 			let systemPrompt: string | undefined;
 			if (customPersonaDropdown.value === 'custom') {
 				systemPrompt = systemPromptInput.value.trim() || undefined;
-			} else if (customPersonaDropdown.value !== 'default') {
+			} else if (customPersonaDropdown.value !== 'textassistant') {
 				systemPrompt = this.getPersonaPrompt(customPersonaDropdown.value) || undefined;
 			} else {
 				systemPrompt = undefined;
@@ -1939,7 +1926,7 @@ class OLLMSettingTab extends PluginSettingTab {
 			originalPromptData = { ...prompt };
 			systemInfoDisplay.textContent = systemPrompt 
 				? `System Prompt: ${systemPrompt.substring(0, 80)}${systemPrompt.length > 80 ? '...' : ''}`
-				: 'System Prompt: Default persona will be used';
+				: 'System Prompt: Text Assistant will be used';
 			dateDisplay.textContent = `Created: ${new Date(prompt.createdAt).toLocaleDateString()} | Updated: ${new Date(prompt.updatedAt).toLocaleDateString()}`;
 			
 			new Notice(`Updated prompt: ${prompt.title}`);
@@ -1959,7 +1946,7 @@ class OLLMSettingTab extends PluginSettingTab {
 			let systemPrompt: string | undefined;
 			if (customPersonaDropdown.value === 'custom') {
 				systemPrompt = systemPromptInput.value.trim() || undefined;
-			} else if (customPersonaDropdown.value !== 'default') {
+			} else if (customPersonaDropdown.value !== 'textassistant') {
 				systemPrompt = this.getPersonaPrompt(customPersonaDropdown.value) || undefined;
 			} else {
 				systemPrompt = undefined;

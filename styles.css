@@ -244,21 +244,70 @@
     font-style: italic;
 }
 
-/* Base button styles for prompt/persona management - unified styling except colors */
-.prompt-button {
+/* ========================================
+   Button Base Styles
+   ======================================== */
+
+/* Base button class for consistent styling */
+.llm-button {
+    display: inline-block;
     padding: 8px 16px;
-    border: 1px solid transparent; /* Reserve space for border to ensure consistent height */
+    border: 1px solid transparent;
     border-radius: 4px;
-    cursor: pointer;
     font-size: 0.9em;
-    align-self: center; /* Align buttons vertically */
-    box-sizing: border-box; /* Include border in height calculation */
-    white-space: nowrap; /* Prevent text wrapping */
-    text-align: center; /* Center text in button */
+    cursor: pointer;
+    text-align: center;
+    white-space: nowrap;
+    box-sizing: border-box;
+    transition: background-color 0.3s ease;
 }
+
+/* Primary/Accent buttons */
+.llm-button-primary {
+    background-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+.llm-button-primary:hover {
+    background-color: var(--interactive-accent-hover);
+}
+
+/* Secondary/Gray buttons */
+.llm-button-secondary {
+    background-color: var(--background-modifier-border);
+    color: var(--text-normal);
+}
+
+.llm-button-secondary:hover {
+    background-color: var(--background-modifier-border-hover);
+}
+
+/* Danger/Delete buttons */
+.llm-button-danger {
+    background-color: var(--text-error);
+    color: var(--text-on-accent);
+}
+
+.llm-button-danger:hover {
+    background-color: var(--text-error-hover);
+}
+
+/* Success/Create buttons */
+.llm-button-success {
+    background-color: var(--background-modifier-success);
+    color: var(--text-on-accent);
+}
+
+.llm-button-success:hover {
+    background-color: var(--background-modifier-success-hover);
+}
+
+/* Legacy button classes - mapped to new base styles */
 
 /* Add Prompt button */
 .add-prompt-button {
+    padding: 8px 16px;
+    border-radius: 4px;
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
 }
@@ -269,6 +318,8 @@
 
 /* Update and Delete buttons for compact prompt widget */
 .update-prompt-button {
+    padding: 8px 16px;
+    border-radius: 4px;
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
 }
@@ -278,6 +329,8 @@
 }
 
 .delete-prompt-button {
+    padding: 8px 16px;
+    border-radius: 4px;
     background-color: var(--text-error);
     color: var(--text-on-accent);
 }
@@ -332,7 +385,7 @@
 
 .submitButton {
     margin-left: 10px;
-    padding: 10px 20px;
+    padding: 8px 16px;
     border-radius: 20px;
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
@@ -545,13 +598,9 @@
     box-sizing: border-box;
 }
 
-/* Buttons for persona management - extend base prompt-button styles */
-.update-persona-button, .delete-persona-button, .create-persona-button, .rename-persona-button {
-    background-color: var(--interactive-accent);
-    color: var(--text-on-accent);
-}
-
 .update-persona-button {
+    padding: 8px 16px;
+    border-radius: 4px;
     background-color: var(--interactive-accent);
     color: var(--text-on-accent);
 }
@@ -560,16 +609,25 @@
     background-color: var(--interactive-accent-hover);
 }
 
-.rename-persona-button {
+/* Rename, Duplicate, Set as Default, and Restore Defaults buttons - unified gray style */
+.rename-persona-button, .duplicate-persona-button, .set-default-persona-button,
+.restore-defaults-prompt-button, .restore-defaults-persona-button {
+    padding: 8px 16px;
+    border-radius: 4px;
     background-color: var(--background-modifier-border);
     color: var(--text-normal);
 }
 
-.rename-persona-button:hover {
+.rename-persona-button:hover, .duplicate-persona-button:hover,
+.set-default-persona-button:hover, .restore-defaults-prompt-button:hover,
+.restore-defaults-persona-button:hover {
     background-color: var(--background-modifier-border-hover);
 }
 
+/* Delete persona button */
 .delete-persona-button {
+    padding: 8px 16px;
+    border-radius: 4px;
     background-color: var(--text-error);
     color: var(--text-on-accent);
 }
@@ -578,13 +636,20 @@
     background-color: var(--text-error-hover);
 }
 
+/* Create button */
 .create-persona-button {
+    padding: 8px 16px;
+    border-radius: 4px;
     background-color: var(--background-modifier-success);
     color: var(--text-on-accent);
 }
 
 .create-persona-button:hover {
     background-color: var(--background-modifier-success-hover);
+}
+
+.duplicate-persona-button:hover {
+    background-color: var(--background-modifier-border-hover);
 }
 
 /* Button group for persona management */
@@ -595,25 +660,6 @@
     margin-top: 12px;
     width: 100%;
     align-items: center; /* Vertically align all buttons */
-}
-
-/* Restore defaults button styling - extends base prompt-button styles */
-.restore-defaults-prompt-button, .restore-defaults-persona-button, .set-default-persona-button {
-    padding: 8px 16px;
-    border: 1px solid transparent; /* No visible border - matches other buttons */
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 0.9em;
-    align-self: center;
-    box-sizing: border-box;
-    white-space: nowrap;
-    text-align: center;
-    background-color: var(--background-modifier-border);
-    color: var(--text-normal);
-}
-
-.restore-defaults-prompt-button:hover, .restore-defaults-persona-button:hover, .set-default-persona-button:hover {
-    background-color: var(--background-modifier-border-hover);
 }
 
 /* Persona dropdown styling */
