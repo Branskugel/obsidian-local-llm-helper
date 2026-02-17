@@ -14,16 +14,51 @@ The Obsidian Local LLM Helper is a community plugin for Obsidian that seamlessly
 - **Backlink Generation**: Generate backlinks to related notes
 - **Multiple Personas**: Choose from various AI personas (developer, physicist, fitness expert, etc.)
 
+---
+
+## GRACE-Подобный Подход к Аннотированию Кода
+
+Этот проект использует **GRACE-подобный подход** (Graph-Ready Annotated Code Entities) — систему аннотирования кода для улучшения навигации, понимания и поддержки кодовых баз AI-моделями и разработчиками.
+
+📄 **Документация по аннотированию**: [`GRACE.md`](./GRACE.md)
+
+### Принципы Аннотирования
+
+Рекомендуемые принципы для исходных файлов проекта:
+
+1. **Module Tags**: Желательно иметь открывающий и закрывающий тег модуля
+   - Формат: `// <MODULE_NAME_START>` и `// <MODULE_NAME_END>`
+
+2. **Module Contract**: Контракт на уровне модуля в начале файла
+   - Формат: `/* Module Contract: [responsibility] --> [functionality] --> [consumers] */`
+
+3. **Class Contracts**: Классы должны иметь контракты
+   - Формат: `/* Class Contract: [purpose] --> [responsibilities] --> [services] */`
+
+4. **Method Contracts**: Публичные методы должны иметь контракты
+   - Формат: `/* Method Contract: [use-case] --> [actions] --> [results] */`
+
+5. **Import/Export Documentation**: Зависимости должны быть задокументированы
+
+📊 **Project Dependency Graph**: [`PROJECT_DEPENDENCY_GRAPH.md`](./PROJECT_DEPENDENCY_GRAPH.md)
+
+---
+
 ## Architecture
 
 ### Main Components
-- `main.ts`: Core plugin implementation with commands, settings, and UI integration
-- `src/rag.ts`: RAG (Retrieval Augmented Generation) system for chatting with notes
-- `src/ollamaEmbeddings.ts` & `src/openAIEmbeddings.ts`: Embedding implementations for different providers
-- `src/autoTagger.ts`: Auto-generation of hashtags for content
-- `src/backlinkGenerator.ts`: Generates backlinks to related notes
-- `src/ragChatModal.ts`: Chat interface for RAG functionality
-- `src/updateNoticeModal.ts`: Modal for displaying update information
+
+Для полной информации о зависимостях см. [`PROJECT_DEPENDENCY_GRAPH.md`](./PROJECT_DEPENDENCY_GRAPH.md)
+
+- [`main.ts`](./main.ts): Core plugin implementation with commands, settings, and UI integration ([см. граф зависимостей](./PROJECT_DEPENDENCY_GRAPH.md#1-olocalllmplugin-maints))
+- [`src/rag.ts`](./src/rag.ts): RAG (Retrieval Augmented Generation) system for chatting with notes ([см. граф зависимостей](./PROJECT_DEPENDENCY_GRAPH.md#2-ragmanager-srcragts))
+- [`src/ollamaEmbeddings.ts`](./src/ollamaEmbeddings.ts): Ollama embedding provider ([см. граф зависимостей](./PROJECT_DEPENDENCY_GRAPH.md#3-ollamaembeddings-srcollamaembeddingsts))
+- [`src/openAIEmbeddings.ts`](./src/openAIEmbeddings.ts): OpenAI/LM Studio embedding provider ([см. граф зависимостей](./PROJECT_DEPENDENCY_GRAPH.md#4-openaiembeddings-srcopenaiembeddingsts))
+- [`src/autoTagger.ts`](./src/autoTagger.ts): Auto-generation of hashtags for content ([см. граф зависимостей](./PROJECT_DEPENDENCY_GRAPH.md#module-dependency-matrix))
+- [`src/backlinkGenerator.ts`](./src/backlinkGenerator.ts): Generates backlinks to related notes using RAG ([см. граф зависимостей](./PROJECT_DEPENDENCY_GRAPH.md#5-backlinkgenerator-srcbacklinkgeneratorts))
+- [`src/ragChatModal.ts`](./src/ragChatModal.ts): Chat interface for RAG functionality ([см. граф зависимостей](./PROJECT_DEPENDENCY_GRAPH.md#6-ragchatmodal-srcragchatmodalts))
+- [`src/updateNoticeModal.ts`](./src/updateNoticeModal.ts): Modal for displaying update information with changelog ([см. граф зависимостей](./PROJECT_DEPENDENCY_GRAPH.md#module-dependency-matrix))
+- [`src/promptPickerModal.ts`](./src/promptPickerModal.ts): Modal for selecting preset or custom prompts ([см. граф зависимостей](./PROJECT_DEPENDENCY_GRAPH.md#module-dependency-matrix))
 
 ### Technology Stack
 - **Framework**: Obsidian API

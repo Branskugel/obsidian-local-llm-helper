@@ -1,59 +1,25 @@
 // <IMPORTS_START>
 /**
  * Local LLM Helper Plugin for Obsidian
- * 
+ *
  * This plugin enables users to work with local LLMs to assist with text editing,
  * note processing, and content generation within Obsidian.
- * 
+ *
  * ========================================
- * AI-FRIENDLY TAGGING SYSTEM EXPLANATION
+ * CODE ANNOTATION SYSTEM
  * ========================================
- * 
- * This file uses AI-friendly XML-like comment tags to help AI models and developers
- * navigate and understand the code structure more efficiently. These tags follow
- * the format:
- * 
- * - Opening tag: // <SECTION_NAME_START>
- * - Closing tag: // <SECTION_NAME_END>
- * 
- * Purpose of these tags:
- * 1. Navigation: Allow AI models to quickly locate specific sections of code
- * 2. Context: Provide clear boundaries for different functional units
- * 3. Maintainability: Make it easier to modify specific sections without affecting others
- * 4. Understanding: Help AI models comprehend the code structure during analysis
- * 
- * Common tag categories:
- * - Interface definitions: // <INTERFACE_DEFINITIONS_START/END>
- * - Class definitions: // <CLASS_NAME_START/END>
- * - Method groups: // <METHOD_CATEGORY_START/END>
- * - Settings management: // <SETTINGS_SECTION_START/END>
- * - UI components: // <UI_COMPONENT_START/END>
- * 
- * These tags are especially useful when working with large TypeScript files where
- * AI models need to locate specific functionality quickly.
- * 
- * ========================================
- * CONTRACT COMMENT EXPLANATION
- * ========================================
- * 
- * Each function with an opening AI-friendly tag is preceded by a contract comment
- * that describes the function's behavior in a standardized format:
- * 
- * /* Contract: [use-case] --> [actions] --> [expected results] * /
- * 
- * Where:
- * - Use-case: What the function is intended for
- * - Actions: What the function does internally
- * - Expected results: What the function returns or accomplishes
- * 
- * This contract format helps AI models and developers quickly understand:
- * 1. Purpose: What problem the function solves
- * 2. Behavior: How the function operates
- * 3. Outcome: What to expect when calling the function
- * 
- * Example:
- * // Contract: Process user text with LLM --> Send text and prompt to language model --> Return generated response
- * 
+ *
+ * This file follows the GRACE-style annotation system used throughout this project.
+ * For complete documentation on our annotation and contract system, see:
+ *
+ * 📄 {@link ./GRACE.md} - GRACE-Style Code Annotation System
+ *
+ * Key elements:
+ * - XML-like tags for code navigation: // <SECTION_NAME_START/END>
+ * - Module contracts: /* Module Contract: input --> actions --> output * /
+ * - Class contracts: /* Class Contract: purpose --> responsibilities --> services * /
+ * - Method contracts: /* Method Contract: use-case --> actions --> results * /
+ *
  * ========================================
  */
 
