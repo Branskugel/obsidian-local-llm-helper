@@ -51,27 +51,18 @@ Seamlessly integrate your local LLM with Obsidian. Process large text chunks, tr
 ## Release notes
 
 v2.4.0
-* **Remove Tavily Integration**: Removed Tavily search provider to simplify codebase; all search functionality now uses direct search engine APIs
-* **Hotkey Configuration Button**: Added keyboard icon button next to custom prompts dropdown for quick hotkey setup
-  - Button opens Hotkeys settings with search auto-filled to the selected prompt's command
-  - First custom prompt automatically selected by default when opening settings
-* **Persistent Persona Settings**: User-modified persona system prompts now persist across Obsidian restarts
-  - Changes saved to data.json instead of reverting to hardcoded defaults
-  - "Restore Default Personas" button resets to original built-in personas
-* **Improved Text Assistant Prompt**: Updated default system prompt to be more concise and effective
-  - Better language detection and markdown formatting instructions
-  - Removed redundant template placeholders
-* **UI Improvements**: Better vertical alignment of custom prompts dropdown and hotkey button
-* **Code Cleanup**: Removed duplicate main.css file (styles.css is the active stylesheet)
+- Added sections for editing personas (system prompts) and custom prompts
+   - You can specify a person (system prompt) for a custom prompt to be used with it. Default is selected by default.
+   - Custom prompts are automatically registered in obsidian as commands for possible binding to hotkeys
+- The button with the keyboard icon ⌨️ opens the settings page of the hotkeys for the custom prompt being edited
+   - Added a command with a modal window to select from the created custom prompts, so as not to create a hotkey for each
 
-v2.3.3
-* **Merge with Upstream**: Incorporated upstream version 2.3.2 changes while preserving custom search engine functionality
-* **Enhanced RAG System**: Improved embedding model handling with better re-indexing when settings change
-* **Search Provider Options**: Added Tavily search provider support alongside Brave Search
-* **Debounced Settings Save**: Prevents lag when typing in settings with automatic save on close
-* **AI-Friendly Code Tags**: Added XML-like tags and contract comments throughout codebase for better AI assistance
-* **Plugin Loading Fix**: Fixed manifest.json to properly load in Obsidian
-* **Comprehensive Search**: Maintains support for multiple search engines (Brave, SearXNG, DuckDuckGo, Firecrawl, Perplexica, Custom)
+- Redesigned the management of the search engines used
+   - Removed Tavily 
+   - Now there is a dropdown menu for selecting the engine/search provider
+   - A searxng has been added to the selection
+
+- Partially integrated improvements by the author of the original plugin up to version 2.3.3
 
 v2.2.1
 * **Critical Bug Fix**: Fixed re-embedding issue that caused embeddings to regenerate on every app restart
